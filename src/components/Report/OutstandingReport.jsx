@@ -90,7 +90,6 @@ const getScreenRowTypographyClassName = (ageDays) => {
 };
 
 export default function OutstandingReport({ shops, allShops, generateOutstandingReport }) {
-  const reportFinalMarketOutstanding = useAppStore((state) => state.reportFinalMarketOutstanding);
   const setReportFinalMarketOutstanding = useAppStore((state) => state.setReportFinalMarketOutstanding);
   const [showFilters, setShowFilters] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -198,10 +197,28 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   }, [availableStoreProfiles, omniSearch]);
 
   // ═══════════════════════════════════════════════════════════════════
+  // CASE-INSENSITIVE KEY NORMALIZER
+  // Transforms any invoice/bill token into a uniform lowercase key
+  // before it is joined with shopId into a composite dictionary key.
+  // Handles every casing variant (Manual Bill / Manual-bill /
+  // Manual_bill / manual_bill) by lowercasing the full token then
+  // collapsing all runs of spaces, dashes, and underscores into a
+  // single underscore. This guarantees that payments bond to their
+  // parent invoice regardless of capitalisation or separator style
+  // in the source data.
+  // ═══════════════════════════════════════════════════════════════════
+  const normalizeKeyToken = (value) =>
+    String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\-_]+/g, '_');
+
+  // ═══════════════════════════════════════════════════════════════════
   // GLOBAL STATE-LEVEL PAYMENT DICTIONARY
-  // Builds a cross-reference map keyed by "shopId_docNo" from ALL
-  // payment rows in the raw API data. This forces payments onto the
-  // DOM immediately without fragile UUID-based conditional matching.
+  // Builds a cross-reference map keyed by "shopId_normalizedDocNo"
+  // from ALL payment rows in the raw API data. The normalizeKeyToken
+  // step ensures casing and separator variants collapse to the same
+  // bucket, forcing payments onto the DOM immediately.
   // ═══════════════════════════════════════════════════════════════════
   const paymentMap = useMemo(() => {
     const map = {};
@@ -210,8 +227,10 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       if (isPaymentRowType(row.docType)) {
         const storeId = String(row.shopId || '').trim();
         // Extract invoice reference: try docNo first (most reliable),
-        // fall back to invoiceId text value if docNo is empty
-        const invoiceNo = String(row.docNo || row.invoiceId || '').trim();
+        // fall back to invoiceId text value if docNo is empty.
+        // Normalise the token so casing variants map to the same bucket.
+        const rawInvoiceNo = String(row.docNo || row.invoiceId || '').trim();
+        const invoiceNo = normalizeKeyToken(rawInvoiceNo);
         const key = storeId + '_' + invoiceNo;
         if (!storeId || !invoiceNo || key === '_') return;
         const paymentAmount = toMoneyNumber(row.received || row.amount || 0);
@@ -223,27 +242,41 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
 
   // ═══════════════════════════════════════════════════════════════════
   // CONSOLIDATED REPORT ROWS
-  // Uses the explicit paymentMap dictionary to force payment amounts
-  // into the received/balanceDue fields of invoice rows. No conditional
-  // matching inside the filtered invoice array.
+  // Preserves the API's pre-calculated `received` value as the primary
+  // source of truth. Any additional payments found in the paymentMap
+  // (standalone Payment rows) are additive on top. This prevents the
+  // frontend from zeroing out backend-accurate data when the endpoint
+  // returns no standalone Payment rows (paymentMap is empty).
   // ═══════════════════════════════════════════════════════════════════
   const consolidatedReportRows = useMemo(() => {
-    const invoiceRows = reportRows.filter((row) => row.docType === 'Invoice');
-    if (invoiceRows.length === 0) return [];
+    if (reportRows.length === 0) return [];
 
-    return invoiceRows.map((invoiceRow) => {
-      const storeId = String(invoiceRow.shopId || '').trim();
-      const invDocNo = String(invoiceRow.docNo || '').trim();
-      const lookupKey = storeId + '_' + invDocNo;
-      const totalPaid = toMoneyNumber(paymentMap[lookupKey] || 0);
-      const invoiceAmount = toMoneyNumber(invoiceRow.amount);
-      const updatedBalanceDue = computeBalanceDue(invoiceAmount, totalPaid);
+    return reportRows.map((row) => {
+      if (row.docType === 'Invoice') {
+        const storeId = String(row.shopId || '').trim();
+        // Normalise the invoice token with the same routine used when
+        // the paymentMap was built — guarantees key parity.
+        const invDocNo = normalizeKeyToken(String(row.docNo || '').trim());
+        const lookupKey = storeId + '_' + invDocNo;
 
-      return {
-        ...invoiceRow,
-        received: totalPaid,
-        balanceDue: updatedBalanceDue,
-      };
+        // GOLDEN FIX: Preserve the API's pre-calculated received amount.
+        // The backend already sends the correct received value — honour it.
+        // Any additional payments captured in paymentMap are purely additive.
+        const apiReceived = toMoneyNumber(row.received || 0);
+        const mappedPaid = toMoneyNumber(paymentMap[lookupKey] || 0);
+        const totalPaid = toMoneyNumber(apiReceived + mappedPaid);
+
+        const invoiceAmount = toMoneyNumber(row.amount);
+        const updatedBalanceDue = computeBalanceDue(invoiceAmount, totalPaid);
+
+        return {
+          ...row,
+          received: totalPaid,
+          balanceDue: updatedBalanceDue,
+        };
+      }
+      // Payment rows survive the pipeline untouched
+      return row;
     });
   }, [reportRows, paymentMap]);
 
@@ -289,25 +322,29 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       }
 
       const group = groups[row.shopId];
-      if (row.docType === 'Invoice') {
+      if (row.docType === 'Invoice' || row.docType === 'Payment' || row.docType === 'Payment (Cash)') {
         group.invoices.push({
           ...row,
           ageDays: computeElapsedDays(row.date),
           ageBucket: getAgeBucket(computeElapsedDays(row.date)),
         });
-        group.totalInvoiced += toMoneyNumber(row.amount);
-        // Force safe cumulative addition: wraps both operands AND the
-        // result through toMoneyNumber to prevent floating-point leakage
-        // into downstream summary banner aggregations.
-        group.totalReceived = toMoneyNumber(group.totalReceived + toMoneyNumber(row.received || 0));
-        group.invoiceCount++;
+        // Only accumulate invoiced amount and received from Invoice rows
+        if (row.docType === 'Invoice') {
+          group.totalInvoiced += toMoneyNumber(row.amount);
+          // Force safe cumulative addition: wraps both operands AND the
+          // result through toMoneyNumber to prevent floating-point leakage
+          // into downstream summary banner aggregations.
+          group.totalReceived = toMoneyNumber(group.totalReceived + toMoneyNumber(row.received || 0));
+          group.invoiceCount++;
+        }
       }
     });
 
     // totalOutstanding strictly sums the pre-calculated balanceDue from
-    // the consolidated invoice rows (already reduced by paymentMap).
+    // Invoice rows only — payment rows are excluded from the net balance sum.
     Object.values(groups).forEach((group) => {
       group.totalOutstanding = group.invoices.reduce((sum, inv) => {
+        if (inv.docType !== 'Invoice') return sum;
         const netValue = toMoneyNumber(inv.balanceDue);
         return toMoneyNumber(sum + netValue);
       }, 0);
@@ -329,10 +366,13 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   }, [allStoresData, selectedStoreId]);
 
   const { shopGroups, totalMarketOutstanding, summary } = useMemo(() => {
-    const totalOutstanding = filteredData.reduce((sum, g) => toMoneyNumber(sum + Math.max(0, toMoneyNumber(g.totalOutstanding || 0))), 0);
     const totalInvoiceCount = filteredData.reduce((sum, g) => sum + g.invoiceCount, 0);
     const totalInvoiceAmount = filteredData.reduce((sum, g) => sum + g.totalInvoiced, 0);
     const totalReceivedAmount = filteredData.reduce((sum, g) => toMoneyNumber(sum + toMoneyNumber(g.totalReceived || 0)), 0);
+    // Grand total is the strict sum of shop-level net balances (already
+    // clamped and reduced by the paymentMap), ensuring absolute net parity
+    // with per-store outstanding figures shown in the UI.
+    const totalOutstanding = filteredData.reduce((sum, g) => toMoneyNumber(sum + toMoneyNumber(g.totalOutstanding || 0)), 0);
     const avgOutstanding = filteredData.length > 0 ? totalOutstanding / filteredData.length : 0;
     const highestOutstanding = filteredData.length > 0
       ? Math.max(...filteredData.map((g) => g.totalOutstanding || 0))
@@ -373,11 +413,12 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
     setReportFinalMarketOutstanding(totalMarketOutstanding);
   }, [totalMarketOutstanding, setReportFinalMarketOutstanding]);
 
-  const sharedTotalMarketOutstanding = toMoneyNumber(
-    Number.isFinite(Number(reportFinalMarketOutstanding))
-      ? reportFinalMarketOutstanding
-      : totalMarketOutstanding,
-  );
+  // Bind directly to the locally consolidated net total. Do NOT fall back
+  // to the store's reportFinalMarketOutstanding here — that value is only
+  // written by the effect below AFTER this render, so on refresh/mount it
+  // can briefly hold a stale, unreduced snapshot figure from a previous
+  // fetch, causing the "flash to a wrong number" bug.
+  const sharedTotalMarketOutstanding = toMoneyNumber(totalMarketOutstanding);
 
   // Sort invoices within a group
   const getSortedInvoices = useCallback((invoices) => {

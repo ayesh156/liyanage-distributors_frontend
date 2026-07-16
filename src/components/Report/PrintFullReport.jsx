@@ -79,28 +79,75 @@ const computeAgeDays = (dateStr) => {
 const applyStrictAgeFilter = (rows = [], thresholdDays = 60) => {
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
+  // ── CASE-INSENSITIVE KEY NORMALIZER ──────────────────────────────────────
+  // Collapses any casing/separator variant of an invoice token (spaces,
+  // dashes, underscores) into a single uniform lowercase underscore-
+  // separated string before it is joined with shopId. This guarantees that
+  // "Manual Bill", "Manual-bill", "Manual_bill", and "manual_bill" all
+  // resolve to the same "manual_bill" bucket in both the payment totals map
+  // and the aged-invoice lookup set.
+  const normalizeKeyToken = (value) =>
+    String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\-_]+/g, '_');
+
   // ── CRITICAL REFACTOR 2026-07-15: Consolidate payments into invoice rows
   //    instead of keeping separate payment rows ──
+  // Build a composite key from shopId + the normalised invoice token.
+  // Raw API report snapshots (reportRowsOverride) don't carry a `parentKey`
+  // at all, so relying on `row.parentKey` alone collapses every row onto
+  // the same "undefined" bucket and breaks the reduction. The normalisation
+  // step additionally ensures casing and separator variants never produce
+  // split buckets for the same logical invoice.
+  const buildRowKey = (row) => {
+    const shopPart = String(row.shopId ?? '').trim();
+    // Safely resolve the invoice token across both data shapes:
+    // snapshot rows use docNo/invoiceId; ledger rows use parentKey/id.
+    // Normalise the token so casing variants collapse to one key.
+    const rawInvoiceNo = String(row.docNo || row.invoiceId || '').trim();
+    const invoiceNo = normalizeKeyToken(rawInvoiceNo) || normalizeKeyToken(String(row.parentKey || row.id || '').trim());
+    return `${shopPart}_${invoiceNo}`;
+  };
+
   // Identify invoice rows that are >= threshold days old
+  // Safe dual-field predicate: snapshot rows carry docType, ledger rows carry lineType
   const agedInvoices = rows.filter(
-    (row) => row.lineType === 'Invoice' && computeAgeDays(row?.date) >= thresholdDays,
+    (row) => (row.lineType === 'Invoice' || row.docType === 'Invoice') && computeAgeDays(row?.date) >= thresholdDays,
   );
 
   if (agedInvoices.length === 0) return [];
 
-  const agedInvoiceParentKeys = new Set(agedInvoices.map((row) => row.parentKey));
+  const agedInvoiceKeys = new Set(agedInvoices.map(buildRowKey));
 
-  // Build a payment totals map: parentKey → total received sum
-  const paymentTotalsByParent = {};
+  // Build a payment totals map: composite key → total received sum.
+  // Seed it with any amount already netted onto the invoice row itself
+  // (the case for pre-consolidated snapshot rows, which have no separate
+  // Payment-type siblings), then add any genuine Payment-type rows found.
+  const paymentTotalsByKey = {};
+  agedInvoices.forEach((row) => {
+    const key = buildRowKey(row);
+    const alreadyReceived = toMoneyNumber(row.received || 0);
+    if (alreadyReceived > 0) {
+      paymentTotalsByKey[key] = toMoneyNumber((paymentTotalsByKey[key] || 0) + alreadyReceived);
+    }
+  });
   rows.forEach((row) => {
-    if (row.lineType !== 'Payment' || !agedInvoiceParentKeys.has(row.parentKey)) return;
-    const parentKey = row.parentKey;
-    paymentTotalsByParent[parentKey] = toMoneyNumber(paymentTotalsByParent[parentKey] || 0) + toMoneyNumber(row.received || 0);
+    // Safe dual-field predicate: snapshot rows carry docType, ledger rows carry lineType
+    const isPaymentRow = (
+      row.lineType === 'Payment' ||
+      row.docType === 'Payment' ||
+      row.docType === 'Payment (Cash)'
+    );
+    if (!isPaymentRow || !agedInvoiceKeys.has(buildRowKey(row))) return;
+    const key = buildRowKey(row);
+    paymentTotalsByKey[key] = toMoneyNumber((paymentTotalsByKey[key] || 0) + toMoneyNumber(row.received || 0));
   });
 
   // Return consolidated invoice rows with payments summed into `received`
   return agedInvoices.map((invoiceRow) => {
-    const totalReceived = toMoneyNumber(paymentTotalsByParent[invoiceRow.parentKey] || 0);
+    const key = buildRowKey(invoiceRow);
+    const totalReceived = toMoneyNumber(paymentTotalsByKey[key] || 0);
     const invoiceAmount = toMoneyNumber(invoiceRow.amount);
     const updatedBalanceDue = Math.max(0, invoiceAmount - totalReceived);
 
@@ -118,7 +165,8 @@ const calculateVisibleOutstanding = (rows = []) => {
 
   return toMoneyNumber(
     rows
-      .filter((row) => String(row?.lineType || '').toLowerCase() === 'invoice')
+      // Safe dual-field predicate: snapshot rows carry docType, ledger rows carry lineType
+      .filter((row) => (row.lineType === 'Invoice' || row.docType === 'Invoice'))
       .reduce((sum, row) => sum + Math.max(0, toMoneyNumber(row?.finalOutstanding ?? row?.balanceDue ?? 0)), 0),
   );
 };
@@ -143,7 +191,13 @@ const getPrintRowTypographyStyle = (ageDays) => {
 
 const getDisplayDocumentType = (row) => {
   if (!row) return '—';
-  if (row.lineType === 'Invoice') return 'Invoice';
+  // Safe dual-field check: snapshot rows use docType, ledger rows use lineType
+  if (row.lineType === 'Invoice' || row.docType === 'Invoice') return 'Invoice';
+  if (
+    row.lineType === 'Payment' ||
+    row.docType === 'Payment' ||
+    row.docType === 'Payment (Cash)'
+  ) return 'Payment';
   return row.documentTypeLabel || '—';
 };
 
@@ -181,13 +235,86 @@ const PrintFullReport = ({
     : globalTransactions;
 
   const shopReportData = useMemo(() => {
-    return activeShops.map((shop) => {
-      const shopTx = activeTransactions.filter(
-        (t) => String(t.shopId) === String(shop.id),
-      );
+    // ── SNAPSHOT MODE DETECTION ──────────────────────────────────────────
+    // reportRowsOverride rows are pre-consolidated snapshots: amount,
+    // received, and balanceDue are already netted per invoice by the
+    // OutstandingReport layer BEFORE this component receives them.
+    // Running buildStatementLedger on these rows would treat the already-
+    // reconciled `received` field as raw payment amounts and re-subtract
+    // them, producing the inflated Rs. 1,472,952.00 grand total bug.
+    // The snapshot branch MUST completely bypass buildStatementLedger and
+    // filterOutstandingTransactions and assign rows directly.
+    const isSnapshotMode = isFullReport && !!reportRowsOverride;
 
-      const outstandingTransactions = filterOutstandingTransactions(shopTx);
-      const { statementRows, totalOutstanding } = buildStatementLedger(outstandingTransactions, new Date());
+    return activeShops.map((shop) => {
+      let statementRows;
+      let totalOutstanding;
+      let sortedTransactions;
+
+      if (isSnapshotMode) {
+        // ── SNAPSHOT BRANCH: Direct pass-through, NO ledger pipeline ──────
+        // Filter the snapshot array strictly by shopId. Do NOT apply
+        // filterOutstandingTransactions or buildStatementLedger — both
+        // expect un-consolidated raw payment arrays and will corrupt the
+        // already-netted balanceDue / received values on snapshot rows.
+        const shopRows = (reportRowsOverride || []).filter(
+          (row) => String(row.shopId) === String(shop.id),
+        );
+
+        // Sort chronologically for display consistency.
+        sortedTransactions = [...shopRows].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Assign directly — preserve every field the snapshot already
+        // computed (received, balanceDue, amount, docNo, date, etc.).
+        // Resolve lineType from whichever field the snapshot provides:
+        // snapshot rows set docType, ledger rows set lineType.
+        statementRows = sortedTransactions.map((row, idx) => {
+          let resolvedLineType;
+          if (row.docType === 'Invoice' || row.lineType === 'Invoice') {
+            resolvedLineType = 'Invoice';
+          } else if (
+            row.docType === 'Payment' ||
+            row.docType === 'Payment (Cash)' ||
+            row.lineType === 'Payment'
+          ) {
+            resolvedLineType = 'Payment';
+          } else {
+            resolvedLineType = row.lineType || 'Invoice';
+          }
+          return {
+            ...row,
+            key: row.id || `${shop.id}-${row.docNo || 'row'}-${idx}`,
+            lineType: resolvedLineType,
+            received: toMoneyNumber(row.received || 0),
+            balanceDue: toMoneyNumber(row.balanceDue || 0),
+          };
+        }).filter((row) => toMoneyNumber(row.balanceDue) > 0);
+
+        // Reduce totalOutstanding directly from the filtered snapshot rows.
+        // Each row's balanceDue is already payment-deducted — sum directly,
+        // do NOT re-run any ledger carry-forward logic here.
+        // Both the accumulator AND the current row value are wrapped in
+        // toMoneyNumber to prevent floating-point drift from leaking into
+        // per-store and grand-total aggregations.
+        totalOutstanding = statementRows.reduce(
+          (sum, r) => toMoneyNumber(toMoneyNumber(sum) + toMoneyNumber(r.balanceDue)),
+          0,
+        );
+      } else {
+        // ── LEGACY BRANCH: Raw transaction ledger pipeline ─────────────────
+        // Used only for the single-store statement view where transactions
+        // arrive as raw un-consolidated records from the global store or
+        // transactionsOverride prop. buildStatementLedger is correct here.
+        const shopTx = activeTransactions.filter(
+          (t) => String(t.shopId) === String(shop.id),
+        );
+        const outstandingTransactions = filterOutstandingTransactions(shopTx);
+        const ledgerResult = buildStatementLedger(outstandingTransactions, new Date());
+        statementRows = ledgerResult.statementRows;
+        totalOutstanding = ledgerResult.totalOutstanding;
+        sortedTransactions = [...outstandingTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+      }
+
       const visibleStatementRows = olderThan60Days
         ? applyStrictAgeFilter(statementRows, 60)
         : statementRows;
@@ -195,14 +322,12 @@ const PrintFullReport = ({
         ? calculateVisibleOutstanding(visibleStatementRows)
         : totalOutstanding;
 
-      const sorted = [...outstandingTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
-
       let postDatedCheques = [];
 
       if (shouldShowPdcSection) {
         // ── Post Dated Cheques for this shop — derived from ALL payment records ──
         const collectedCheques = [];
-        sorted.forEach((t) => {
+        sortedTransactions.forEach((t) => {
           if (t.payments && t.payments.length > 0) {
             t.payments.forEach((p) => {
               const chequeNo = (p.chequeNo || t.chequeNo || '').trim();
@@ -275,9 +400,19 @@ const PrintFullReport = ({
     0,
   );
 
-  const finalMarketOutstanding = Number.isFinite(Number(marketOutstandingTotalOverride))
-    ? toMoneyNumber(marketOutstandingTotalOverride)
-    : toMoneyNumber(grandTotal);
+  // Hard-bind: use marketOutstandingTotalOverride when it is a strictly
+  // positive finite number. This prevents the layout from recalculating
+  // or displaying a stale inflated total when a snapshot total is passed
+  // in. A zero or null override falls back to the locally computed
+  // grandTotal so the component still works for the non-snapshot path.
+  // The strict positivity guard blocks fallback-drift leaks where a stale
+  // or zero override would silently allow the inflated grandTotal to
+  // surface in the footer.
+  const finalMarketOutstanding =
+    Number.isFinite(Number(marketOutstandingTotalOverride)) &&
+    Number(marketOutstandingTotalOverride) > 0
+      ? toMoneyNumber(marketOutstandingTotalOverride)
+      : toMoneyNumber(grandTotal);
 
   const companyName = 'Liyanage Distributors';
   const companyAddress = 'Hakmana Road, Deiyandara.';
@@ -840,7 +975,12 @@ const PrintFullReport = ({
                 ) : (
                   statementRows.map((row) => {
                     const chequeMeta = getChequeCellMeta(row);
-                    const shouldRenderChequeMeta = row.lineType === 'Payment' && chequeMeta.showChequeMeta;
+                    // Safe dual-field predicate for cheque meta rendering
+                    const shouldRenderChequeMeta = (
+                      row.lineType === 'Payment' ||
+                      row.docType === 'Payment' ||
+                      row.docType === 'Payment (Cash)'
+                    ) && chequeMeta.showChequeMeta;
                     const elapsedDays = computeAgeDays(row.date);
                     const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays);
                     const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays);
