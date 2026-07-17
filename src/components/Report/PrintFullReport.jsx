@@ -1181,7 +1181,7 @@ const PrintFullReport = ({
                         display: 'block',
                         fontSize: '9pt',
                         fontWeight: 700,
-                        color: '#1e293b',
+                        color: '#E53935',
                         textTransform: 'uppercase',
                         letterSpacing: '0.06em',
                         marginBottom: '4px',
@@ -1194,7 +1194,7 @@ const PrintFullReport = ({
                           key={`inv-note-${row.key || row.docNo}`}
                           style={{
                             fontSize: '8.5pt',
-                            color: '#374151',
+                            color: '#E53935',
                             lineHeight: '1.5',
                             display: 'flex',
                             alignItems: 'flex-start',
@@ -1205,12 +1205,12 @@ const PrintFullReport = ({
                           <strong style={{
                             fontFamily: "'Courier New', monospace",
                             whiteSpace: 'nowrap',
-                            color: '#111827',
+                            color: '#E53935',
                           }}>
                             {normalizeInvoiceNo(row.docNo)}
                           </strong>
                           <span style={{ color: '#6b7280' }}>-</span>
-                          <span>{invDesc}</span>
+                          <span style={{ color: '#E53935' }}>{invDesc}</span>
                         </div>
                       ))}
                     </div>
@@ -1223,7 +1223,7 @@ const PrintFullReport = ({
                         display: 'block',
                         fontSize: '9pt',
                         fontWeight: 700,
-                        color: '#1e293b',
+                        color: '#E53935',
                         textTransform: 'uppercase',
                         letterSpacing: '0.06em',
                         marginBottom: '4px',
@@ -1236,7 +1236,7 @@ const PrintFullReport = ({
                           key={`pay-note-${parentInvoiceNo}-${idx}`}
                           style={{
                             fontSize: '8.5pt',
-                            color: '#374151',
+                            color: '#E53935',
                             lineHeight: '1.5',
                             display: 'flex',
                             alignItems: 'flex-start',
@@ -1247,12 +1247,12 @@ const PrintFullReport = ({
                           <strong style={{
                             fontFamily: "'Courier New', monospace",
                             whiteSpace: 'nowrap',
-                            color: '#111827',
+                            color: '#E53935',
                           }}>
                             {parentInvoiceNo}
                           </strong>
                           <span style={{ color: '#6b7280' }}>-</span>
-                          <span>{payDesc}</span>
+                          <span style={{ color: '#E53935' }}>{payDesc}</span>
                         </div>
                       ))}
                     </div>
