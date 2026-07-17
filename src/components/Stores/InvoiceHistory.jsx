@@ -165,7 +165,7 @@ export default function InvoiceHistory({
       chequeNo: isBankBasedPayment ? (inlinePayment.chequeNo || '') : null,
       bankName: isBankBasedPayment ? (inlinePayment.bankName || '') : null,
       branchName: isBankBasedPayment ? (inlinePayment.branchName || '') : null,
-      description: inlinePayment.description || 'Quick payment',
+      description: inlinePayment.description || '',
     });
     closeInlinePayment();
   };

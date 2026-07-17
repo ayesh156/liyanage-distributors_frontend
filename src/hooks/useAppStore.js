@@ -998,6 +998,73 @@ const useAppStore = create((set, get) => {
     },
 
     /**
+     * deletePayment: Deletes a payment record, reverts the balance on the invoice,
+     * and refreshes the full state tree to reflect the ledger rollback.
+     *
+     * TRANSACTIONAL PIPELINE:
+     * 1. Calls paymentsApi.reverse(id) → backend atomically deletes the payment
+     *    and subtracts the amountPaid from invoice.received, adds it back to balanceDue.
+     * 2. On success, performs a full re-hydration fetchAllData() so all derived
+     *    state (summary cards, charts, outstanding report) reflects the rollback.
+     * 3. Falls back to local state mutation if API is unreachable.
+     */
+    deletePayment: async (paymentId) => {
+      try {
+        const res = await paymentsApi.reverse(String(paymentId));
+        if (res.success || res.data) {
+          // Full re-hydration: fetch fresh state so ledgers, balance, dashboard all update
+          const result = await fetchAllData();
+          if (result.live) {
+            const state = get();
+            const derived = computeDerived(result.stores, result.invoices, state.searchQuery);
+            const selected = computeSelected(result.stores, result.invoices, derived.shopOutstanding, state.selectedShopId);
+            set({
+              shops: result.stores,
+              invoices: result.invoices,
+              transactions: result.invoices,
+              salesPersons: result.salesPersons,
+              routes: result.routes,
+              routeNames: getRouteNames(result.routes),
+              storesPagination: result.storesPagination,
+              invoicesPagination: result.invoicesPagination,
+              liveData: true,
+              ...derived,
+              ...selected,
+            });
+            await get().refreshOutstandingReport();
+          } else {
+            await get().refresh();
+            await get().refreshOutstandingReport();
+          }
+          toast.success('Payment deleted successfully. Balance due has been reverted.');
+        }
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to delete payment. Please try again.');
+        console.error('Failed to delete payment:', error);
+        // Fallback: apply local state inversion immediately
+        set((state) => {
+          const newInvoices = state.invoices.map((inv) => {
+            const filteredPayments = (inv.payments || []).filter((p) => String(p.id) !== String(paymentId));
+            if (filteredPayments.length === inv.payments?.length) return inv; // no change
+            const removedPayment = (inv.payments || []).find((p) => String(p.id) === String(paymentId));
+            const revertAmount = removedPayment ? Number(removedPayment.amount) : 0;
+            const newReceived = Math.max(0, Number(inv.received) - revertAmount);
+            const newBalanceDue = Math.max(0, Number(inv.amount) - newReceived);
+            return {
+              ...inv,
+              received: newReceived,
+              balanceDue: newBalanceDue,
+              payments: filteredPayments,
+            };
+          });
+          const derived = computeDerived(state.shops, newInvoices, state.searchQuery);
+          const selected = computeSelected(state.shops, newInvoices, derived.shopOutstanding, state.selectedShopId);
+          return { ...state, invoices: newInvoices, transactions: newInvoices, ...derived, ...selected };
+        });
+      }
+    },
+
+    /**
      * generateOutstandingReport: produces per-shop rows with correct running balance.
      * If live data is available, uses the cached outstandingRows fetched from the API.
      * Otherwise falls back to local computation from the invoices array.

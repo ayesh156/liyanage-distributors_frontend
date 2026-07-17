@@ -718,6 +718,11 @@ const PrintFullReport = ({
             background: #ffffff !important;
             color: #000000 !important;
           }
+
+          .store-print-descriptions-footer {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
         }
       `}} />
 
@@ -1074,7 +1079,189 @@ const PrintFullReport = ({
             </table>
             </div>
 
-            {/* ── 2d. POST DATED CHEQUES SECTION ── */}
+            {/* ── 2d. 2-COLUMN FOOTNOTE FOOTER: Invoice Notes + Payment Notes ── */}
+            {(() => {
+              // ── LEFT COLUMN: Invoice-level descriptions ──────────────────
+              const invoiceNotes = statementRows
+                .filter((row) => row.lineType === 'Invoice' || row.docType === 'Invoice')
+                .map((row) => {
+                  const invDesc = (
+                    row.description ||
+                    row.notes ||
+                    row.paymentDescription ||
+                    row.reason ||
+                    ''
+                  ).trim();
+                  return invDesc ? { row, invDesc } : null;
+                })
+                .filter(Boolean);
+
+              // ── RIGHT COLUMN: Payment-level descriptions ─────────────────
+              // Collect from nested payments[] on every row, then from
+              // standalone Payment-type rows that carry a description.
+              const paymentNotes = [];
+              const seenPaymentDesc = new Set();
+
+              statementRows.forEach((row) => {
+                const parentInvoiceNo = normalizeInvoiceNo(row.docNo);
+
+                // Nested payments array (present on invoice rows in raw/legacy mode)
+                if (Array.isArray(row.payments) && row.payments.length > 0) {
+                  row.payments.forEach((p) => {
+                    const payDesc = (
+                      p.description ||
+                      p.amountPaidDescription ||
+                      p.desc ||
+                      p.notes ||
+                      ''
+                    ).trim();
+                    if (!payDesc) return;
+                    const dedupeKey = `${parentInvoiceNo}|${payDesc}`;
+                    if (seenPaymentDesc.has(dedupeKey)) return;
+                    seenPaymentDesc.add(dedupeKey);
+                    paymentNotes.push({ parentInvoiceNo, payDesc });
+                  });
+                }
+
+                // Standalone payment rows with their own description
+                const isPaymentRow =
+                  row.lineType === 'Payment' ||
+                  row.docType === 'Payment' ||
+                  row.docType === 'Payment (Cash)';
+                if (isPaymentRow) {
+                  const payDesc = (
+                    row.description ||
+                    row.notes ||
+                    row.paymentDescription ||
+                    row.reason ||
+                    ''
+                  ).trim();
+                  if (!payDesc) return;
+                  // Cross-reference back to the parent invoice via parentKey / invoiceId
+                  const resolvedParent = normalizeInvoiceNo(
+                    row.parentKey || row.invoiceId || row.docNo,
+                  );
+                  const dedupeKey = `${resolvedParent}|${payDesc}`;
+                  if (seenPaymentDesc.has(dedupeKey)) return;
+                  seenPaymentDesc.add(dedupeKey);
+                  paymentNotes.push({ parentInvoiceNo: resolvedParent, payDesc });
+                }
+              });
+
+              const hasInvoiceNotes = invoiceNotes.length > 0;
+              const hasPaymentNotes = paymentNotes.length > 0;
+              const hasAnyNotes = hasInvoiceNotes || hasPaymentNotes;
+              if (!hasAnyNotes) return null;
+
+              // ── DYNAMIC LAYOUT: 2-column grid only when BOTH sides have
+              //    content; collapse to full-width block when only one side
+              //    has notes — eliminates the vacant "—" column entirely.
+              const bothColumnsActive = hasInvoiceNotes && hasPaymentNotes;
+
+              return (
+                <div
+                  className="store-print-descriptions-footer"
+                  style={{
+                    marginTop: '16px',
+                    paddingTop: '10px',
+                    paddingBottom: '8px',
+                    paddingLeft: '8px',
+                    paddingRight: '8px',
+                    borderTop: '1px dashed #cbd5e1',
+                    display: bothColumnsActive ? 'grid' : 'block',
+                    ...(bothColumnsActive && { gridTemplateColumns: '1fr 1fr', gap: '24px' }),
+                    pageBreakInside: 'avoid',
+                    breakInside: 'avoid',
+                  }}
+                >
+                  {/* ── LEFT: Invoice Notes — only rendered when notes exist ── */}
+                  {hasInvoiceNotes && (
+                    <div style={bothColumnsActive ? {} : { width: '100%' }}>
+                      <span style={{
+                        display: 'block',
+                        fontSize: '9pt',
+                        fontWeight: 700,
+                        color: '#1e293b',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        marginBottom: '4px',
+                      }}>
+                        Invoice Notes:
+                      </span>
+
+                      {invoiceNotes.map(({ row, invDesc }) => (
+                        <div
+                          key={`inv-note-${row.key || row.docNo}`}
+                          style={{
+                            fontSize: '8.5pt',
+                            color: '#374151',
+                            lineHeight: '1.5',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '5px',
+                            marginTop: '4px',
+                          }}
+                        >
+                          <strong style={{
+                            fontFamily: "'Courier New', monospace",
+                            whiteSpace: 'nowrap',
+                            color: '#111827',
+                          }}>
+                            {normalizeInvoiceNo(row.docNo)}
+                          </strong>
+                          <span style={{ color: '#6b7280' }}>-</span>
+                          <span>{invDesc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── RIGHT: Payment Notes — only rendered when notes exist ── */}
+                  {hasPaymentNotes && (
+                    <div style={bothColumnsActive ? {} : { width: '100%' }}>
+                      <span style={{
+                        display: 'block',
+                        fontSize: '9pt',
+                        fontWeight: 700,
+                        color: '#1e293b',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        marginBottom: '4px',
+                      }}>
+                        Payment Notes:
+                      </span>
+
+                      {paymentNotes.map(({ parentInvoiceNo, payDesc }, idx) => (
+                        <div
+                          key={`pay-note-${parentInvoiceNo}-${idx}`}
+                          style={{
+                            fontSize: '8.5pt',
+                            color: '#374151',
+                            lineHeight: '1.5',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '5px',
+                            marginTop: '4px',
+                          }}
+                        >
+                          <strong style={{
+                            fontFamily: "'Courier New', monospace",
+                            whiteSpace: 'nowrap',
+                            color: '#111827',
+                          }}>
+                            {parentInvoiceNo}
+                          </strong>
+                          <span style={{ color: '#6b7280' }}>-</span>
+                          <span>{payDesc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ── 2e. POST DATED CHEQUES SECTION ── */}
             {shouldShowPdcSection && postDatedCheques.length > 0 && (
               <div style={{ marginTop: '12px', marginBottom: '12px' }}>
                 <div style={{
