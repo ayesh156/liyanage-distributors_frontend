@@ -723,6 +723,13 @@ const PrintFullReport = ({
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
+
+          .store-print-descriptions-footer,
+          .store-print-descriptions-footer * {
+            color: #dc2626 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
       `}} />
 
@@ -1210,7 +1217,7 @@ const PrintFullReport = ({
                             {normalizeInvoiceNo(row.docNo)}
                           </strong>
                           <span style={{ color: '#6b7280' }}>-</span>
-                          <span style={{ color: '#E53935' }}>{invDesc}</span>
+                          <span style={{ color: '#dc2626 !important' }}>{invDesc}</span>
                         </div>
                       ))}
                     </div>
@@ -1252,7 +1259,7 @@ const PrintFullReport = ({
                             {parentInvoiceNo}
                           </strong>
                           <span style={{ color: '#6b7280' }}>-</span>
-                          <span style={{ color: '#E53935' }}>{payDesc}</span>
+                          <span style={{ color: '#dc2626 !important' }}>{payDesc}</span>
                         </div>
                       ))}
                     </div>
