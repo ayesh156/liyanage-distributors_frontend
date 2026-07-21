@@ -35,20 +35,74 @@ export default function HardwareStoresTable({
     })),
   ], [routes, shops]);
 
-  // ── Filtered data (full set, used for aggregate calculations) ──
   const filtered = useMemo(() => {
     let result = shops;
-    if (routeFilter !== 'all') result = result.filter((s) => String(s.routeId) === String(routeFilter));
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.contact.toLowerCase().includes(q) ||
-        String(s.route || '').toLowerCase().includes(q)
-      );
+
+    // 1. Route Filter
+    if (routeFilter !== 'all') {
+      result = result.filter((s) => String(s.routeId) === String(routeFilter));
     }
+
+    // 2. Ultra-Smart Flexible Search Filter
+    if (searchQuery && searchQuery.trim()) {
+      const rawQuery = searchQuery.trim().toLowerCase();
+
+      // Normalizer: strips zero-width/invisible unicode chars and folds accented
+      // characters to their base letter (e.g. "é" -> "e") before any other processing.
+      // Guards against mobile-keyboard artifacts (NBSP, ZWSP, smart punctuation)
+      // that survive a plain [^a-z0-9] strip because they aren't literal symbols.
+      const normalize = (str) =>
+        String(str || '')
+          .normalize('NFKD')
+          .replace(/[\u0300-\u036f]/g, '')       // strip combining diacritics after NFKD split
+          .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width space/joiner/BOM
+          .replace(/\u00A0/g, ' ');              // non-breaking space -> regular space
+
+      // Helper A: Pure Alphanumeric Cleaner (Strips ALL symbols, spaces, dots, &)
+      const cleanAlpha = (str) => normalize(str).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      // Helper B: Word Tokenizer (Splits by dots, spaces, hyphens, ampersands)
+      const tokenize = (str) =>
+        normalize(str)
+          .toLowerCase()
+          .split(/[\s.\-_&,]+/)
+          .filter(Boolean);
+
+      const qClean = cleanAlpha(rawQuery);
+      const qTokens = tokenize(rawQuery);
+
+      result = result.filter((s) => {
+        const storeNameRaw = s.name || s.storeName || s.shopName || '';
+        if (!storeNameRaw) return false;
+
+        const nameClean = cleanAlpha(storeNameRaw);
+        const nameTokens = tokenize(storeNameRaw);
+
+        // Check 1: Direct Alphanumeric Substring Match (Handles: "g&j" -> "gj", "esse" -> "esselectronics")
+        if (qClean && nameClean.includes(qClean)) {
+          return true;
+        }
+
+        // Check 2: Multi-Token / Word Prefix Match (Handles: "ess.e", "g & j", "g j")
+        if (qTokens.length > 0) {
+          const allTokensMatched = qTokens.every((qTok) => {
+            const cleanQTok = cleanAlpha(qTok);
+            if (!cleanQTok) return true;
+            return nameTokens.some((nTok) => {
+              const cleanNTok = cleanAlpha(nTok);
+              return cleanNTok.startsWith(cleanQTok) || cleanNTok.includes(cleanQTok);
+            });
+          });
+          if (allTokensMatched) return true;
+        }
+
+        return false;
+      });
+    }
+
     return result;
   }, [shops, routeFilter, searchQuery]);
+
 
   // ── Pagination slice — compute displayed rows for the current page ──
   const paginatedStores = useMemo(() => {
@@ -69,14 +123,14 @@ export default function HardwareStoresTable({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             {/* Search */}
-            <div className="relative">
+            <div className="relative w-full sm:w-[60%] min-w-[360px] flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search stores..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input-field pl-9 w-full sm:w-60"
+                className="input-field pl-9 w-full"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')}
@@ -86,7 +140,7 @@ export default function HardwareStoresTable({
               )}
             </div>
             {/* Route Filter */}
-            <div className="w-full sm:w-44">
+            <div className="w-full sm:min-w-[200px] sm:w-56">
               <SmartCombobox
                 value={routeFilter}
                 onSelect={(opt) => setRouteFilter(opt.value)}

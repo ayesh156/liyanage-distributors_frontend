@@ -121,17 +121,16 @@ function computeDerived(shops, invoices, searchQuery = '') {
       outstanding: v.invoiced - v.recovered,
     }));
 
-  // Filtered shops for search
-  const filteredShops = !searchQuery
-    ? activeShops
-    : activeShops.filter((s) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          s.name.toLowerCase().includes(q) ||
-          s.route.toLowerCase().includes(q) ||
-          s.contact.toLowerCase().includes(q)
-        );
-      });
+ // NOTE: Search filtering is intentionally NOT done here.
+  // filteredShops always returns the full active shop list, unfiltered.
+  // HardwareStoresTable.jsx owns all search-matching logic (symbol-insensitive,
+  // dot/word-bridging match). Previously this function also ran a naive
+  // `.includes(searchQuery)` filter, which silently dropped valid matches
+  // (e.g. "g&j" vs "G & J Tools", "esse" vs "E.S.S.Electronics") before the
+  // table's own filter ever saw them — two filters fighting each other.
+  // `searchQuery` param is kept for signature compatibility with existing
+  // callers but is no longer used for filtering here.
+  const filteredShops = activeShops;
 
   return {
     activeShops,
