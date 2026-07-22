@@ -598,8 +598,83 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
         const paymentNotes = [];
         const seenPaymentDesc = new Set();
 
+        // UUID detector + resolver shared by both paths below.
+        const IS_UUID_PAY = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+        // Build a lookup map from raw transaction id → human-readable docNo
+        // using the original boundTransactions (pre-ledger) so we can resolve
+        // UUID parentKey references that statementRows no longer carry as `.id`.
+        const invoiceIdToDocNo = new Map();
+        boundTransactions.forEach((t) => {
+          const rawDocNo = String(t.docNo || '').trim();
+          if (t.id && rawDocNo && !IS_UUID_PAY.test(rawDocNo)) {
+            invoiceIdToDocNo.set(String(t.id), rawDocNo);
+          }
+        });
+
+        const resolvePayDocNo = (rawRef) => {
+          const ref = String(rawRef || '').trim();
+          if (!ref) return null;
+          if (!IS_UUID_PAY.test(ref)) return normalizeInvoiceNo(ref);
+          // UUID — step 1: match via the pre-ledger transaction id → docNo map
+          if (invoiceIdToDocNo.has(ref)) {
+            return normalizeInvoiceNo(invoiceIdToDocNo.get(ref));
+          }
+          // UUID — step 2: match by parentKey on ledger rows (covers nested payment rows
+          // whose parentKey == the parent invoice's transaction.id or transaction.docNo)
+          const matchedByParentKey = statementRows.find(
+            (r) =>
+              r.lineType === 'Invoice' &&
+              String(r.parentKey || '') === ref &&
+              r.docNo &&
+              !IS_UUID_PAY.test(String(r.docNo)),
+          );
+          if (matchedByParentKey) {
+            return normalizeInvoiceNo(matchedByParentKey.docNo);
+          }
+          // UUID — step 3: match by row id fields carried on ledger rows
+          const matchedById = statementRows.find(
+            (inv) =>
+              String(inv.id || '') === ref ||
+              String(inv._id || '') === ref ||
+              String(inv.invoiceId || '') === ref,
+          );
+          if (matchedById && matchedById.docNo && !IS_UUID_PAY.test(String(matchedById.docNo))) {
+            return normalizeInvoiceNo(matchedById.docNo);
+          }
+          // UUID — step 4: first Invoice row with a readable docNo
+          const fallback = statementRows.find(
+            (r) =>
+              r.lineType === 'Invoice' &&
+              r.docNo &&
+              !IS_UUID_PAY.test(String(r.docNo)),
+          );
+          if (fallback) return normalizeInvoiceNo(fallback.docNo);
+          return 'Invoice';
+        };
+
         statementRows.forEach((row) => {
-          const parentInvoiceNo = normalizeInvoiceNo(row.docNo);
+          // For nested payments[], the parent label comes from this row's
+          // own docNo — but if this row is a Payment row its docNo may be
+          // a UUID, so resolve it through the same helper.
+          //
+          // IMPORTANT: buildPaymentRow sets docNo = transaction.docNo (the
+          // parent invoice's docNo), so for ledger-generated Payment rows
+          // row.docNo already carries the correct human-readable invoice
+          // number. Only route through the UUID resolver when docNo itself
+          // is a UUID; otherwise use it directly.
+          const rawDocNo = String(row.docNo || '').trim();
+          const rawParentKey = String(row.parentKey || row.invoiceId || '').trim();
+          let parentInvoiceNo;
+          if (rawDocNo && !IS_UUID_PAY.test(rawDocNo)) {
+            // docNo is already a human-readable invoice number — use it directly.
+            parentInvoiceNo = normalizeInvoiceNo(rawDocNo);
+          } else if (rawParentKey) {
+            // docNo is missing or UUID; try to resolve via parentKey/invoiceId.
+            parentInvoiceNo = resolvePayDocNo(rawParentKey);
+          } else {
+            parentInvoiceNo = resolvePayDocNo(rawDocNo);
+          }
 
           // Nested payments array on invoice rows
           if (Array.isArray(row.payments) && row.payments.length > 0) {
@@ -629,9 +704,21 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
               ''
             ).trim();
             if (!payDesc) return;
-            const resolvedParent = normalizeInvoiceNo(
-              row.parentKey || row.invoiceId || row.docNo,
-            );
+
+            // Use the same resolution strategy as nested payments above:
+            // if docNo is human-readable, use it directly. Otherwise use the
+            // UUID resolver on parentKey/invoiceId/docNo in that order.
+            const rawStandaloneDocNo = String(row.docNo || '').trim();
+            const rawStandaloneParentKey = String(row.parentKey || row.invoiceId || '').trim();
+            let resolvedParent;
+            if (rawStandaloneDocNo && !IS_UUID_PAY.test(rawStandaloneDocNo)) {
+              resolvedParent = normalizeInvoiceNo(rawStandaloneDocNo);
+            } else if (rawStandaloneParentKey) {
+              resolvedParent = resolvePayDocNo(rawStandaloneParentKey) || 'Invoice';
+            } else {
+              resolvedParent = resolvePayDocNo(rawStandaloneDocNo) || 'Invoice';
+            }
+
             const dedupeKey = `${resolvedParent}|${payDesc}`;
             if (seenPaymentDesc.has(dedupeKey)) return;
             seenPaymentDesc.add(dedupeKey);

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, FileText, DollarSign, Receipt, User, Hash, Building2 } from 'lucide-react';
 import FancyDatePicker from '../ui/FancyDatePicker';
 import SalesPersonSearchSelect from '../ui/SalesPersonSearchSelect';
+import { toast } from 'react-toastify';
 import useAppStore from '../../hooks/useAppStore';
 
 const formatCurrency = (val) => {
@@ -210,7 +211,15 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
       return; // ⛔ Abort – do not fire API or save
     }
 
-    const amt = parseFloat(amount);
+    // ── INVOICE EDIT OVERPAYMENT GUARD: Prevent received > amount ──────────
+    const amt = parseFloat(amount) || 0;
+    const recv = parseFloat(alreadyReceived) || 0;
+    if (recv > amt) {
+      toast.error("Received amount cannot exceed the total invoice amount!");
+      const receivedInput = document.querySelector('input[placeholder="0.00"]')?.closest('div')?.querySelector('input');
+      if (receivedInput) receivedInput.focus();
+      return; // ⛔ Abort – do not fire API or save
+    }
     const normalizedChequeNo = chequeNo.trim();
     const normalizedBankName = bankName.trim();
     const normalizedBranchName = branchName.trim();

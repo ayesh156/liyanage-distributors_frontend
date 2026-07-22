@@ -3,6 +3,7 @@ import {
   ArrowLeft, Edit3, Receipt, CalendarDays,
   Search, X, Printer, Plus, Trash2, DollarSign, Loader2,
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import useAppStore from '../../hooks/useAppStore';
 import AddInvoiceModal from './AddInvoiceModal';
 import DeleteConfirmModal from '../ui/DeleteConfirmModal';
@@ -149,7 +150,7 @@ export default function InvoiceHistory({
     if (!targetRow) return;
     const balanceDue = computeBalanceDue(targetRow.amount || 0, targetRow.received || 0);
     if (amt > balanceDue) {
-      alert(`Payment amount (${formatCurrency(amt)}) cannot exceed balance due (${formatCurrency(balanceDue)}).`);
+      toast.error("Entered amount exceeds the remaining payable balance for this invoice!");
       return;
     }
 

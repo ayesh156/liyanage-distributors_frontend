@@ -59,7 +59,9 @@ export default function CollectPaymentModal({ isOpen, onClose, onSave, invoice }
     const amt = toMoneyNumber(amount);
     if (!amt || amt <= 0) return;
     if (amt > balanceDue) {
-      toast.error(`Payment amount (${formatCurrency(amt)}) cannot exceed the balance due (${formatCurrency(balanceDue)}).`);
+      toast.error("Entered amount exceeds the remaining payable balance for this invoice!");
+      const amountInput = document.querySelector('input[type="number"]');
+      if (amountInput) amountInput.focus();
       return;
     }
 

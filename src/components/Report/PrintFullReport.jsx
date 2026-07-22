@@ -268,6 +268,12 @@ const PrintFullReport = ({
         // computed (received, balanceDue, amount, docNo, date, etc.).
         // Resolve lineType from whichever field the snapshot provides:
         // snapshot rows set docType, ledger rows set lineType.
+        //
+        // IMPORTANT: Payment rows MUST NOT be filtered out here even though
+        // their balanceDue is 0. They are needed by the PAYMENT NOTES
+        // footnote renderer so it can resolve UUID invoiceId references to
+        // human-readable docNo strings. The balanceDue > 0 filter is applied
+        // ONLY to Invoice rows — Payment rows are kept unconditionally.
         statementRows = sortedTransactions.map((row, idx) => {
           let resolvedLineType;
           if (row.docType === 'Invoice' || row.lineType === 'Invoice') {
@@ -288,7 +294,12 @@ const PrintFullReport = ({
             received: toMoneyNumber(row.received || 0),
             balanceDue: toMoneyNumber(row.balanceDue || 0),
           };
-        }).filter((row) => toMoneyNumber(row.balanceDue) > 0);
+        }).filter((row) => {
+          // Keep all Payment rows (they anchor the PAYMENT NOTES footnote).
+          // Only remove Invoice rows that carry zero balance.
+          if (row.lineType === 'Payment') return true;
+          return toMoneyNumber(row.balanceDue) > 0;
+        });
 
         // Reduce totalOutstanding directly from the filtered snapshot rows.
         // Each row's balanceDue is already payment-deducted — sum directly,
@@ -1109,8 +1120,46 @@ const PrintFullReport = ({
               const paymentNotes = [];
               const seenPaymentDesc = new Set();
 
+              // UUID detector reused across both paths below.
+              const IS_UUID_OUTER = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+              // Resolve a raw reference (may be UUID or docNo) to a
+              // human-readable invoice number using statementRows as the
+              // lookup table. Never returns a UUID string.
+              const resolveToDocNo = (rawRef) => {
+                const ref = String(rawRef || '').trim();
+                if (!ref) return null;
+                if (!IS_UUID_OUTER.test(ref)) return normalizeInvoiceNo(ref);
+                // UUID — step 1: find the invoice row with a matching id
+                const matched = statementRows.find(
+                  (inv) =>
+                    String(inv.id || '') === ref ||
+                    String(inv._id || '') === ref ||
+                    String(inv.invoiceId || '') === ref,
+                );
+                if (matched && matched.docNo && !IS_UUID_OUTER.test(String(matched.docNo))) {
+                  return normalizeInvoiceNo(matched.docNo);
+                }
+                // UUID — step 2: first Invoice row with a readable docNo
+                const fallback = statementRows.find(
+                  (r) =>
+                    (r.lineType === 'Invoice' || r.docType === 'Invoice') &&
+                    r.docNo &&
+                    !IS_UUID_OUTER.test(String(r.docNo)),
+                );
+                if (fallback) return normalizeInvoiceNo(fallback.docNo);
+                return 'Invoice';
+              };
+
               statementRows.forEach((row) => {
-                const parentInvoiceNo = normalizeInvoiceNo(row.docNo);
+                // For the nested payments[] path, the parent invoice number
+                // comes from THIS row's own docNo — but only use it when the
+                // row is actually an Invoice. If row is a Payment row, its
+                // docNo may itself be a UUID; resolve it safely.
+                const rawRowRef = String(row.parentKey || row.invoiceId || row.docNo || '').trim();
+                const parentInvoiceNo = IS_UUID_OUTER.test(rawRowRef)
+                  ? resolveToDocNo(rawRowRef)
+                  : normalizeInvoiceNo(row.docNo);
 
                 // Nested payments array (present on invoice rows in raw/legacy mode)
                 if (Array.isArray(row.payments) && row.payments.length > 0) {
@@ -1144,10 +1193,14 @@ const PrintFullReport = ({
                     ''
                   ).trim();
                   if (!payDesc) return;
-                  // Cross-reference back to the parent invoice via parentKey / invoiceId
-                  const resolvedParent = normalizeInvoiceNo(
-                    row.parentKey || row.invoiceId || row.docNo,
-                  );
+
+                  // Use the shared resolveToDocNo helper — handles UUID lookup,
+                  // fallback scan, and hard 'Invoice' guard in one place.
+                  const rawParentRef = String(
+                    row.parentKey || row.invoiceId || row.docNo || '',
+                  ).trim();
+                  const resolvedParent = resolveToDocNo(rawParentRef) || 'Invoice';
+
                   const dedupeKey = `${resolvedParent}|${payDesc}`;
                   if (seenPaymentDesc.has(dedupeKey)) return;
                   seenPaymentDesc.add(dedupeKey);

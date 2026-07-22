@@ -3,6 +3,7 @@ import { X, FileText, Receipt, CalendarDays, DollarSign, CreditCard, Banknote, B
 import SmartCombobox from '../ui/SmartCombobox';
 import FancyDatePicker from '../ui/FancyDatePicker';
 import SalesPersonSearchSelect from '../ui/SalesPersonSearchSelect';
+import { toast } from 'react-toastify';
 import useAppStore from '../../hooks/useAppStore';
 
 const PAYMENT_MODES = [
@@ -70,7 +71,12 @@ export default function AddTransactionModal({ isOpen, onClose, onSave, shopName 
     const amount = parseFloat(form.amount);
     if (!amount || amount <= 0) return;
 
+    // ── INVOICE EDIT OVERPAYMENT GUARD: Prevent received > amount ──────────
     const received = form.docType === 'Invoice' ? parseFloat(form.received) || 0 : undefined;
+    if (form.docType === 'Invoice' && received > amount) {
+      toast.error("Received amount cannot exceed the total invoice amount!");
+      return; // ⛔ Abort – do not fire API or save
+    }
     // Lock paymentMethod directly to active tab state - force bank_slip to canonical bank_transfer
     let paymentMethod = form.paymentMode === 'bank_slip' ? 'bank_transfer' : resolvePaymentMethod(form.paymentMode);
     const isBankMethod = form.docType === 'Payment' && (paymentMethod === 'cheque' || paymentMethod === 'bank_transfer');
