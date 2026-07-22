@@ -34,13 +34,29 @@ export class ApiError extends Error {
   }
 }
 
+// ── Per-route timeout overrides ────────────────────────────────────────────
+// Report endpoints aggregate large datasets and need a longer timeout.
+// All other endpoints keep the default 15 s budget.
+const TIMEOUT_OVERRIDES = [
+  { prefix: '/reports/', ms: 60000 },  // 60 s for all /reports/* routes
+  { prefix: '/invoices/outstanding', ms: 60000 },
+];
+
+function resolveTimeout(endpoint) {
+  for (const rule of TIMEOUT_OVERRIDES) {
+    if (endpoint.startsWith(rule.prefix)) return rule.ms;
+  }
+  return 15000; // default 15 s
+}
+
 /**
  * Generic fetch wrapper with error handling, timeout, JSON parsing.
  */
 async function request(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  const timeoutMs = resolveTimeout(endpoint);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const authToken = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
@@ -77,7 +93,8 @@ async function request(endpoint, options = {}) {
     return data;
   } catch (error) {
     if (error.name === 'AbortError') {
-      const msg = `Request to ${endpoint} timed out after 15s`;
+      const timeoutSec = Math.round(timeoutMs / 1000);
+      const msg = `Request to ${endpoint} timed out after ${timeoutSec}s`;
       showToast(msg);
       throw new ApiError(msg, 408, null);
     }

@@ -783,8 +783,32 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
         )}
         {loadingReport ? (
           <div className="glass-card p-12 text-center">
-            <FileText size={48} className="mx-auto mb-4 text-gray-300 dark:text-slate-600" />
-            <p className="text-gray-500 dark:text-slate-400">Loading outstanding data for selected date filters...</p>
+            <div className="flex flex-col items-center gap-4">
+              {/* Animated spinner */}
+              <svg
+                className="animate-spin"
+                width="48"
+                height="48"
+                viewBox="0 0 48 48"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-label="Loading"
+              >
+                <circle cx="24" cy="24" r="20" stroke="#e2e8f0" strokeWidth="4" />
+                <path
+                  d="M44 24c0-11.046-8.954-20-20-20"
+                  stroke="#3b82f6"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <p className="text-gray-700 dark:text-slate-300 font-semibold text-base">
+                Generating high-volume report, please wait…
+              </p>
+              <p className="text-gray-400 dark:text-slate-500 text-sm">
+                Fetching up to 5,000 records — this may take up to 60 seconds on slower connections.
+              </p>
+            </div>
           </div>
         ) : shopGroups.length === 0 ? (
           <div className="glass-card p-12 text-center">
