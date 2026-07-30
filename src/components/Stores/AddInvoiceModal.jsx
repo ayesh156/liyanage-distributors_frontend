@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, DollarSign, Receipt, User, Hash, Building2 } from 'lucide-react';
+import { X, FileText, DollarSign, Receipt, User, Hash, Building2, Cable } from 'lucide-react';
 import FancyDatePicker from '../ui/FancyDatePicker';
 import SalesPersonSearchSelect from '../ui/SalesPersonSearchSelect';
 import { toast } from 'react-toastify';
@@ -8,6 +8,18 @@ import useAppStore from '../../hooks/useAppStore';
 const formatCurrency = (val) => {
   const num = parseFloat(val) || 0;
   return `Rs. ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const sanitizeDocNo = (value) => {
+  if (!value) return '';
+  // Strip "(Cable Bill)" or "Cable Bill" suffix (with optional leading space/parens)
+  const cleaned = String(value)
+    .replace(/\s*\(cable\s*bill\)/i, '')
+    .replace(/\s*cable\s*bill/i, '')
+    .trim();
+  // If the remaining text is "Manual Bill", "Manual_bill", or empty, return ""
+  if (!cleaned || /^manual_?bill$/i.test(cleaned)) return '';
+  return cleaned;
 };
 
 export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, shopProfile, shopSalesPerson, editInvoice }) {
@@ -24,7 +36,8 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
   const [salesPersonBackendId, setSalesPersonBackendId] = useState(null);
   const [isSalesPersonLocked, setIsSalesPersonLocked] = useState(false);
   const [description, setDescription] = useState('');
-  
+  const [isCableBill, setIsCableBill] = useState(false);
+
   // Payment type toggle: 'cash' or 'cheque'
   const [paymentType, setPaymentType] = useState('cash');
   const [chequeNo, setChequeNo] = useState('');
@@ -114,7 +127,7 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
         const effectiveSalesPerson = matchedInvoiceSalesPerson || matchedStoreSalesPerson?.rep;
 
         // Edit mode: pre-populate fields from the invoice data
-        setDocNo(editInvoice.docNo || '');
+        setDocNo(sanitizeDocNo(editInvoice.docNo || ''));
         setAmount(editInvoice.amount ? String(editInvoice.amount) : '');
         setAlreadyReceived(editInvoice.received ? String(editInvoice.received) : '');
         setDate(editInvoice.date || new Date().toISOString().split('T')[0]);
@@ -128,7 +141,8 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
         setSalesPersonBackendId(effectiveSalesPerson?.backendId || invoiceSalesPersonId || null);
         setIsSalesPersonLocked(Boolean(matchedStoreSalesPerson?.source === 'latestStoreInvoice' && !matchedInvoiceSalesPerson));
         setDescription(editInvoice.description || '');
-        
+        setIsCableBill(editInvoice.isCableBill || /cable/i.test(editInvoice.docNo || '') || /\(cable\s*bill\)/i.test(editInvoice.docNo || ''));
+
         // Detect payment type from existing data - normalize legacy variants (bank_transfer + bank_slip → Bank Slip tab)
         const normalizedPaymentMode = String(editInvoice.paymentMode || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
         const normalizedPaymentMethod = String(editInvoice.paymentMethod || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
@@ -175,6 +189,7 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
         setSalesPersonBackendId(matchedStoreRep?.backendId || matchedStoreRep?.id || null);
         setIsSalesPersonLocked(Boolean(initialSalesPersonId || matchedStoreSalesPerson?.source === 'latestStoreInvoice'));
         setDescription('');
+        setIsCableBill(false);
         setPaymentType('cash');
         setChequeNo('');
         setBankName('');
@@ -191,6 +206,10 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
   })();
 
   if (!isOpen) return null;
+
+  const handleCableToggle = () => {
+    setIsCableBill((prev) => !prev);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -223,11 +242,30 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
     const normalizedChequeNo = chequeNo.trim();
     const normalizedBankName = bankName.trim();
     const normalizedBranchName = branchName.trim();
-    
+
     // Force bank_slip UI tab to canonical database enum: bank_transfer
     const dbPaymentMethod = paymentType === 'bank_slip' ? 'bank_transfer' : paymentType;
+    const cleanInput = (docNo || '').trim();
+    let finalDocNo = '';
+
+    if (cleanInput) {
+      // User entered a specific number (e.g., "2285")
+      finalDocNo = isCableBill ? `${cleanInput} (Cable Bill)` : cleanInput;
+    } else {
+      // Input is blank -> Treat as Manual Bill
+      // Preserves legacy DB key if existing, or assigns clean manual format
+      if (isCableBill) {
+        finalDocNo = 'Manual Bill (Cable Bill)';
+      } else {
+        // Reverting from Cable Bill back to Standard Manual Bill
+        finalDocNo = editInvoice?.docNo && !editInvoice.docNo.includes('Cable')
+          ? editInvoice.docNo
+          : 'Manual Bill';
+      }
+    }
     const payload = {
-      docNo: docNo.trim(),
+      docNo: finalDocNo,
+      isCableBill,
       date,
       amount: amt,
       received: parseFloat(alreadyReceived) || 0,
@@ -276,14 +314,28 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
 
         <div className="overflow-y-auto flex-1 min-h-0">
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            {/* Document No — editable text input */}
+            {/* Document No — editable text input + Cable Bill toggle */}
             <div>
               <label className="input-label">
                 <FileText size={13} className="inline mr-1 text-gray-400" /> Document No
               </label>
-              <input type="text" placeholder="e.g., INV-2026-001"
-                value={docNo} onChange={(e) => setDocNo(e.target.value)}
-                className="input-field font-mono font-semibold" required />
+              <div className="flex items-center gap-2">
+                <input type="text" placeholder="e.g., INV-2026-001"
+                  value={docNo} onChange={(e) => setDocNo(e.target.value)}
+                  className="input-field font-mono font-semibold flex-1" />
+                <button
+                  type="button"
+                  onClick={handleCableToggle}
+                  className={`whitespace-nowrap px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-200 flex items-center gap-1.5 ${
+                    isCableBill
+                      ? 'bg-green-100 border-green-400 text-green-700 dark:bg-green-900/40 dark:border-green-600 dark:text-green-300'
+                      : 'bg-gray-50 border-gray-300 text-gray-500 hover:border-green-300 hover:text-green-600 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400 dark:hover:border-green-500 dark:hover:text-green-300'
+                  }`}
+                >
+                  <Cable size={14} />
+                  {isCableBill ? '✓ Cable Bill' : '+ Cable Bill'}
+                </button>
+              </div>
             </div>
 
             {/* Date */}

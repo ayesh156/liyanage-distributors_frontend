@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import useAppStore from '../../hooks/useAppStore';
 import { buildStatementLedger, getChequeCellMeta } from '../../services/statementLedger';
 import { formatDateYMD } from '../../utils/date';
+import { isAgedCableBill } from '../../utils/cableBill';
 
 const formatAmount = (val) => Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -19,15 +20,19 @@ const computeAgeDays = (dateStr) => {
   return elapsedDays;
 };
 
-const getPrintRowAgeTierClassName = (ageDays) => {
+const getPrintRowAgeTierClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
+  if (isAgedCableBill(docNo, normalizedAge)) return 'statement-age-row-tier-cable-green';
   if (normalizedAge >= 60) return 'statement-age-row-tier-60';
   if (normalizedAge >= 45) return 'statement-age-row-tier-45';
   return 'statement-age-row-tier-under45';
 };
 
-const getPrintRowTypographyStyle = (ageDays) => {
+const getPrintRowTypographyStyle = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
+  if (isAgedCableBill(docNo, normalizedAge)) {
+    return { color: '#16a34a', fontWeight: 700 };
+  }
   if (normalizedAge >= 60) {
     return { color: '#ff0000', fontWeight: 700 };
   }
@@ -299,6 +304,13 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+
+          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-cable-green > td.statement-age-row-cell {
+            color: #16a34a !important;
+            font-weight: 700 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
         @media screen {
           .print-only { display: none !important; }
@@ -467,8 +479,8 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
               const chequeMeta = getChequeCellMeta(row);
               const shouldRenderChequeMeta = row.lineType === 'Payment' && chequeMeta.showChequeMeta;
               const elapsedDays = computeAgeDays(row.date);
-              const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays);
-              const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays);
+              const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays, row.docNo);
+              const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays, row.docNo);
 
               return (
               <tr key={row.key} className={rowAgeTierClassName} style={{

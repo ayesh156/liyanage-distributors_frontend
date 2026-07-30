@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import useAppStore from '../../hooks/useAppStore';
 import { buildStatementLedger, filterOutstandingTransactions, getChequeCellMeta } from '../../services/statementLedger';
 import { formatDateYMD } from '../../utils/date';
+import { isAgedCableBill } from '../../utils/cableBill';
 
 /**
  * PrintFullReport — Premium Multi-Shop Outstanding Report
@@ -171,15 +172,19 @@ const calculateVisibleOutstanding = (rows = []) => {
   );
 };
 
-const getPrintRowAgeTierClassName = (ageDays) => {
+const getPrintRowAgeTierClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
+  if (isAgedCableBill(docNo, normalizedAge)) return 'age-row-tier-cable-green';
   if (normalizedAge >= 60) return 'age-row-tier-60';
   if (normalizedAge >= 45) return 'age-row-tier-mid';
   return 'age-row-tier-under45';
 };
 
-const getPrintRowTypographyStyle = (ageDays) => {
+const getPrintRowTypographyStyle = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
+  if (isAgedCableBill(docNo, normalizedAge)) {
+    return { color: '#16a34a', fontWeight: 700 };
+  }
   if (normalizedAge >= 60) {
     return { color: '#dc2626', fontWeight: 700 };
   }
@@ -572,6 +577,13 @@ const PrintFullReport = ({
 
           .mans-lanka-master-print .store-ledger-table tr.age-row-tier-60 > td.age-row-cell {
             color: #dc2626 !important;
+            font-weight: 700 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .mans-lanka-master-print .store-ledger-table tr.age-row-tier-cable-green > td.age-row-cell {
+            color: #16a34a !important;
             font-weight: 700 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -1005,8 +1017,8 @@ const PrintFullReport = ({
                       row.docType === 'Payment (Cash)'
                     ) && chequeMeta.showChequeMeta;
                     const elapsedDays = computeAgeDays(row.date);
-                    const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays);
-                    const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays);
+                    const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays, row.docNo);
+                    const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays, row.docNo);
 
                     return (
                     <tr key={row.key} className={rowAgeTierClassName} style={{

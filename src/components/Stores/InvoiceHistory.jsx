@@ -12,6 +12,7 @@ import PaymentHistoryDrawer from './PaymentHistoryDrawer';
 import FancyDatePicker from '../ui/FancyDatePicker';
 import Pagination from '../ui/Pagination';
 import { formatDateYMD } from '../../utils/date';
+import { isAgedCableBill } from '../../utils/cableBill';
 
 const toMoneyNumber = (value) => {
   const numeric = Number(value);
@@ -38,8 +39,11 @@ const computeElapsedDays = (dateStr) => {
   return elapsedDays;
 };
 
-const getScreenRowTypographyClassName = (ageDays) => {
+const getScreenRowTypographyClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
+  if (isAgedCableBill(docNo, normalizedAge)) {
+    return 'text-green-600 font-bold dark:text-green-400';
+  }
   if (normalizedAge >= 60) {
     return 'text-red-600 font-bold dark:text-red-500';
   }
@@ -297,7 +301,7 @@ export default function InvoiceHistory({
                 paginatedTransactions.map((t) => {
                   const balanceDue = computeBalanceDue(t.amount || 0, t.received || 0);
                   const elapsedDays = computeElapsedDays(t.date);
-                  const rowTypographyClassName = getScreenRowTypographyClassName(elapsedDays);
+                  const rowTypographyClassName = getScreenRowTypographyClassName(elapsedDays, t.docNo);
                   const chequeDisplay = t.chequeNo
                     ? <span className="font-mono">{t.chequeNo}{t.bankName ? <span className="ml-1">/ {t.bankName}</span> : null}</span>
                     : '—';

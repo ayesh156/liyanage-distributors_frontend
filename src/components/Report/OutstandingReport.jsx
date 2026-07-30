@@ -11,6 +11,7 @@ import { outstandingApi, withPagination } from '../../services/api';
 import { extractData, mapOutstandingRowFromApi } from '../../services/dataMappers';
 import useAppStore from '../../hooks/useAppStore';
 import { formatDateYMD } from '../../utils/date';
+import { isAgedCableBill } from '../../utils/cableBill';
 
 const toMoneyNumber = (value) => {
   const numeric = Number(value);
@@ -78,8 +79,11 @@ const getSalesPersonName = (shop) => {
   return shop.salesPerson?.name || shop.salesPersonName || '';
 };
 
-const getScreenRowTypographyClassName = (ageDays) => {
+const getScreenRowTypographyClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
+  if (isAgedCableBill(docNo, normalizedAge)) {
+    return 'text-green-600 font-bold dark:text-green-400';
+  }
   if (normalizedAge >= 60) {
     return 'text-red-600 font-bold dark:text-red-500';
   }
@@ -941,7 +945,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                                   const dynamicAgeDays = computeElapsedDays(inv.date);
                                   const displayReceived = toMoneyNumber(inv.received);
                                   const displayBalanceDue = toMoneyNumber(inv.balanceDue);
-                                  const rowTypographyClassName = getScreenRowTypographyClassName(dynamicAgeDays);
+                                  const rowTypographyClassName = getScreenRowTypographyClassName(dynamicAgeDays, inv.docNo);
                                   const receivedCellTypographyClassName = 'text-black font-bold dark:text-white dark:font-bold';
                                   const receivedDisplayText = displayReceived > 0
                                     ? `- ${formatCurrency(displayReceived)}`
