@@ -1,6 +1,7 @@
 import React, { forwardRef, useMemo } from 'react';
 import useAppStore from '../../hooks/useAppStore';
 import { formatDateYMD } from '../../utils/date';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 const formatCurrency = (val) =>
   `Rs. ${(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -399,7 +400,7 @@ const InvoicePrintView = forwardRef(({ shop, transaction }, ref) => {
             }}>
               <span style={{ fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>Invoice No:</span>
               <span style={{ fontWeight: 700, fontFamily: "'Courier New', monospace", whiteSpace: 'nowrap' }}>
-                {transaction?.docNo || '—'}
+                {normalizeInvoiceNo(transaction?.docNo) || '—'}
               </span>
 
               <span style={{ fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>Date:</span>

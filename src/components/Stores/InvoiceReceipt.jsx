@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { companyInfo } from '../../data/mockData';
 import { formatDateYMD } from '../../utils/date';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 const formatCurrency = (val) =>
   `Rs. ${Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -60,7 +61,7 @@ const InvoiceReceipt = forwardRef(({ shop, transaction, shopOutstanding }, ref) 
               <td style={{ fontWeight: 'bold', width: '38%', padding: '1.5px 0', whiteSpace: 'nowrap' }}>
                 {isInvoice ? 'Invoice No:' : 'Receipt No:'}
               </td>
-              <td style={{ padding: '1.5px 0', fontFamily: 'monospace' }}>{transaction.receiptNo || transaction.docNo}</td>
+              <td style={{ padding: '1.5px 0', fontFamily: 'monospace' }}>{transaction.receiptNo || normalizeInvoiceNo(transaction.docNo)}</td>
             </tr>
             <tr>
               <td style={{ fontWeight: 'bold', padding: '1.5px 0' }}>Date:</td>

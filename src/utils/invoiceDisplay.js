@@ -49,13 +49,13 @@ export function normalizeInvoiceNo(value) {
   // Optional trailing auto-increment index: _7 | -8 | _10 | 11 …
   // Optional preserved parenthetical label: (Cable Bill)
   const manualBillMatch = invoiceNo.match(
-    /^(manual)[_\s-]*(bill)([_\s-]*\d+)?(\s*\([^)]*\))?$/i,
+    /^(manual)[_\s-]*(bill)(?:[_\s-]*\d+)?(\s*\([^)]*\))?(?:[_\s-]*\d+)?$/i,
   );
 
   if (manualBillMatch) {
     const base = `${titleCase(manualBillMatch[1])} ${titleCase(manualBillMatch[2])}`;
     // Preserve the parenthetical label only — the numeric index is dropped.
-    const label = manualBillMatch[4] ? ` ${manualBillMatch[4].trim()}` : '';
+    const label = manualBillMatch[3] ? ` ${manualBillMatch[3].trim()}` : '';
     return `${base}${label}`;
   }
 

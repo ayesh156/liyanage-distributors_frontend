@@ -4,6 +4,7 @@ import {
   CalendarDays, ChevronDown, Edit3, Printer, DollarSign,
 } from 'lucide-react';
 import { formatDateYMD } from '../../utils/date';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 const formatCurrency = (val) => {
   const numeric = Number(val || 0);
@@ -138,7 +139,7 @@ export default function ShopDetail({
                           {formatDate(t.date)}
                         </div>
                       </td>
-                      <td className="table-cell font-mono text-xs text-gray-500 dark:text-slate-400">{t.docNo}</td>
+                      <td className="table-cell font-mono text-xs text-gray-500 dark:text-slate-400">{normalizeInvoiceNo(t.docNo)}</td>
                       <td className="table-cell">
                         <span className="text-sm text-gray-600 dark:text-slate-300">{docTypeLabel}</span>
                       </td>

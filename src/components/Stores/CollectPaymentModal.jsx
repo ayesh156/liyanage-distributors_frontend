@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, DollarSign, Receipt, Building2, Hash } from 'lucide-react';
 import FancyDatePicker from '../ui/FancyDatePicker';
 import { toast } from 'react-toastify';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 const toMoneyNumber = (value) => {
   const numeric = Number(value);
@@ -98,7 +99,7 @@ export default function CollectPaymentModal({ isOpen, onClose, onSave, invoice }
               Collect Payment
             </h3>
             <p className="text-xs text-slate-500 font-mono mt-0.5 dark:text-slate-400">
-              {invoice.docNo} · Balance Due: {formatCurrency(balanceDue)}
+              {normalizeInvoiceNo(invoice.docNo)} · Balance Due: {formatCurrency(balanceDue)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">

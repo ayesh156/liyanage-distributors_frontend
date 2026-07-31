@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Receipt, CalendarDays, Banknote, CreditCard, Building2, FileText, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { formatDateYMD } from '../../utils/date';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 import useAppStore from '../../hooks/useAppStore';
 
 const formatCurrency = (val) => `Rs. ${Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -75,7 +76,7 @@ export default function PaymentHistoryDrawer({ isOpen, onClose, invoice }) {
               Payment History
             </h3>
             <p className="text-xs text-gray-500 font-mono mt-0.5 dark:text-slate-400">
-              {invoice.docNo}
+              {normalizeInvoiceNo(invoice.docNo)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">

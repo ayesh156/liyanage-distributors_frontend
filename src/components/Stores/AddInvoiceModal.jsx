@@ -12,14 +12,25 @@ const formatCurrency = (val) => {
 
 const sanitizeDocNo = (value) => {
   if (!value) return '';
-  // Strip "(Cable Bill)" or "Cable Bill" suffix (with optional leading space/parens)
-  const cleaned = String(value)
+  const raw = String(value).trim();
+  // ── MANUAL-BILL FAMILY KEYS ───────────────────────────────────────────
+  // Internal DB keys carry an auto-increment index that may sit BEFORE or
+  // AFTER the "(Cable Bill)" label, e.g. "Manual Bill(Cable Bill)_1",
+  // "Manual_bill_8(Cable Bill)", "Manual_bill_7". These must pre-fill as
+  // blank so the edit form resolves to the canonical "Manual Bill" label —
+  // no raw `_1` / `_5` / `-7` suffix may ever appear in the input.
+  if (
+    /^(manual)[_\s-]*(bill)(?:[_\s-]*\d+)?(\s*\([^)]*\))?(?:[_\s-]*\d+)?$/i.test(raw)
+  ) {
+    return '';
+  }
+  // ── NON-MANUAL BILLS (numbered invoices / numbered cable bills) ───────
+  // e.g. "2287(Cable Bill)" keeps its numeric portion "2287"; the
+  // decorative "(Cable Bill)" label is driven by the Cable Bill toggle.
+  return raw
     .replace(/\s*\(cable\s*bill\)/i, '')
     .replace(/\s*cable\s*bill/i, '')
     .trim();
-  // If the remaining text is "Manual Bill", "Manual_bill", or empty, return ""
-  if (!cleaned || /^manual_?bill$/i.test(cleaned)) return '';
-  return cleaned;
 };
 
 export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, shopProfile, shopSalesPerson, editInvoice }) {
@@ -248,18 +259,51 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
     const cleanInput = (docNo || '').trim();
     let finalDocNo = '';
 
+    // ── DOC NUMBER UNIQUENESS (SURGICAL FIX) ──────────────────────────
+    // The database enforces a UNIQUE constraint on `docNo` / documentNo.
+    // Manual bills must NEVER be submitted as a generic string such as
+    // "Manual Bill" or "Manual Bill (Cable Bill)" when an existing
+    // internal key (e.g. "Manual_bill_3", "Manual Bill_5 (Cable Bill)")
+    // is already stored — that would collide on the unique index and
+    // trigger the 400 "Document number already in use" error.
     if (cleanInput) {
-      // User entered a specific number (e.g., "2285")
+      // ── NUMBERED BILLS ─────────────────────────────────────────────
+      // User typed an explicit document number — preserve it verbatim.
+      // Uniqueness is guaranteed because numbered invoices are manually
+      // issued by the user with a distinct number.
       finalDocNo = isCableBill ? `${cleanInput} (Cable Bill)` : cleanInput;
     } else {
-      // Input is blank -> Treat as Manual Bill
-      // Preserves legacy DB key if existing, or assigns clean manual format
-      if (isCableBill) {
-        finalDocNo = 'Manual Bill (Cable Bill)';
+      // ── MANUAL BILLS (blank input box) ─────────────────────────────
+      const originalDocNo = String(editInvoice?.docNo || '').trim();
+
+      if (editInvoice && originalDocNo) {
+        // UPDATING an existing manual bill → PRESERVE its unique internal
+        // identifier / index (e.g. "Manual_bill_1", "Manual Bill_3 (Cable Bill)").
+        // The raw indexed key is exactly what satisfies the DB UNIQUE
+        // constraint and must be retained on the API payload.
+        if (isCableBill) {
+          // Keep the internal key; attach the visible "(Cable Bill)" label
+          // only when it is not already part of the stored key.
+          finalDocNo = /cable/i.test(originalDocNo)
+            ? originalDocNo
+            : `${originalDocNo} (Cable Bill)`;
+        } else {
+          // Reverting from Cable Bill → standard manual bill.
+          // Strip the decorative "(Cable Bill)" label but KEEP the internal
+          // unique index suffix so the payload remains DB-unique.
+          finalDocNo = originalDocNo
+            .replace(/\s*\(cable\s*bill\)/i, '')
+            .replace(/\s*cable\s*bill/i, '')
+            .trim();
+          if (!finalDocNo) finalDocNo = originalDocNo;
+        }
       } else {
-        // Reverting from Cable Bill back to Standard Manual Bill
-        finalDocNo = editInvoice?.docNo && !editInvoice.docNo.includes('Cable')
-          ? editInvoice.docNo
+        // CREATING a NEW manual bill → hand the base name to the backend.
+        // `resolveUniqueInvoiceDocumentNo()` in the backend auto-appends a
+        // numeric suffix (`_1`, `_2`, …) whenever a collision is detected,
+        // guaranteeing a UNIQUE `docNo` on first insert — no 400 possible.
+        finalDocNo = isCableBill
+          ? 'Manual Bill (Cable Bill)'
           : 'Manual Bill';
       }
     }

@@ -13,6 +13,7 @@ import FancyDatePicker from '../ui/FancyDatePicker';
 import Pagination from '../ui/Pagination';
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 const toMoneyNumber = (value) => {
   const numeric = Number(value);
@@ -313,7 +314,7 @@ export default function InvoiceHistory({
                           <span className="text-sm">{formatDate(t.date)}</span>
                         </div>
                       </td>
-                      <td className={`table-cell font-mono text-xs ${rowTypographyClassName}`}>{t.docNo}</td>
+                      <td className={`table-cell font-mono text-xs ${rowTypographyClassName}`}>{normalizeInvoiceNo(t.docNo)}</td>
                       <td className={`table-cell ${rowTypographyClassName}`}>
                         <span className="text-sm">Invoice</span>
                       </td>
@@ -403,7 +404,7 @@ export default function InvoiceHistory({
               <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Quick Collect Payment</h3>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5 dark:text-slate-400">{targetRow?.docNo || ''} — Balance Due: {formatCurrency(rowBalanceDue)}</p>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5 dark:text-slate-400">{normalizeInvoiceNo(targetRow?.docNo) || ''} — Balance Due: {formatCurrency(rowBalanceDue)}</p>
                 </div>
                 <button onClick={closeInlinePayment} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-slate-700">
                   <X size={18} />
@@ -532,10 +533,10 @@ export default function InvoiceHistory({
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDeleteConfirm}
         entityType={deleteTarget?.docType === 'Invoice' ? 'invoice' : 'payment'}
-        entityName={deleteTarget?.docNo || ''}
+        entityName={normalizeInvoiceNo(deleteTarget?.docNo) || ''}
         extraMessage={
           deleteTarget
-            ? `This will permanently remove transaction ${deleteTarget.docNo} from ${shop?.name}'s history.`
+            ? `This will permanently remove transaction ${normalizeInvoiceNo(deleteTarget.docNo)} from ${shop?.name}'s history.`
             : null
         }
       />
