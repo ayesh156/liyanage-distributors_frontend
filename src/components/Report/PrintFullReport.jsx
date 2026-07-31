@@ -3,6 +3,7 @@ import useAppStore from '../../hooks/useAppStore';
 import { buildStatementLedger, filterOutstandingTransactions, getChequeCellMeta } from '../../services/statementLedger';
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 /**
  * PrintFullReport — Premium Multi-Shop Outstanding Report
@@ -60,14 +61,6 @@ const formatCreditAmount = (val) => `- ${Math.abs(Number(val || 0)).toLocaleStri
 const formatDateFull = (dateStr) => formatDateYMD(dateStr);
 
 const formatDate = (dateStr) => formatDateYMD(dateStr);
-
-const normalizeInvoiceNo = (value) => {
-  const invoiceNo = String(value ?? '').trim();
-  if (/^Manual_bill(_\d+)?$/i.test(invoiceNo)) {
-    return 'Manual_bill';
-  }
-  return invoiceNo || '—';
-};
 
 const computeAgeDays = (dateStr) => {
   if (!dateStr) return 0;

@@ -3,6 +3,7 @@ import useAppStore from '../../hooks/useAppStore';
 import { buildStatementLedger, getChequeCellMeta } from '../../services/statementLedger';
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
+import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 
 const formatAmount = (val) => Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -46,14 +47,6 @@ const getDisplayDocumentType = (row) => {
   if (!row) return '—';
   if (row.lineType === 'Invoice') return 'Invoice';
   return row.documentTypeLabel || '—';
-};
-
-const normalizeInvoiceNo = (value) => {
-  const invoiceNo = String(value ?? '').trim();
-  if (/^Manual_bill(_\d+)?$/i.test(invoiceNo)) {
-    return 'Manual_bill';
-  }
-  return invoiceNo || '—';
 };
 
 export default function OutstandingStatementPrintView({ shop, transactions, outstanding, currentDate }) {
@@ -489,7 +482,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                 border: 'none',
               }}>
                 <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'left', border: 'none', ...rowTypographyStyle }}>{formatDate(row.date)}</td>
-                <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'left', fontFamily: "'Courier New', monospace", border: 'none', ...rowTypographyStyle }}>{row.docNo}</td>
+                <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'left', fontFamily: "'Courier New', monospace", border: 'none', ...rowTypographyStyle }}>{normalizeInvoiceNo(row.docNo)}</td>
                 <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'left', border: 'none', ...rowTypographyStyle }}>{getDisplayDocumentType(row)}</td>
                 <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'left', fontFamily: "'Courier New', monospace", fontSize: '8pt', border: 'none', ...rowTypographyStyle }}>
                   {shouldRenderChequeMeta ? (
