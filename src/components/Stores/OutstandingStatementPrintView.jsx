@@ -23,7 +23,7 @@ const computeAgeDays = (dateStr) => {
 
 const getPrintRowAgeTierClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
-  if (isAgedCableBill(docNo, normalizedAge)) return 'statement-age-row-tier-cable-green';
+  if (isAgedCableBill(docNo, normalizedAge)) return 'statement-age-row-tier-cable-purple';
   if (normalizedAge >= 60) return 'statement-age-row-tier-60';
   if (normalizedAge >= 45) return 'statement-age-row-tier-45';
   return 'statement-age-row-tier-under45';
@@ -32,7 +32,7 @@ const getPrintRowAgeTierClassName = (ageDays, docNo) => {
 const getPrintRowTypographyStyle = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
   if (isAgedCableBill(docNo, normalizedAge)) {
-    return { color: '#16a34a', fontWeight: 700 };
+    return { color: '#5b21b6', fontWeight: 700 };
   }
   if (normalizedAge >= 60) {
     return { color: '#ff0000', fontWeight: 700 };
@@ -298,8 +298,8 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
             print-color-adjust: exact !important;
           }
 
-          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-cable-green > td.statement-age-row-cell {
-            color: #16a34a !important;
+          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-cable-purple > td.statement-age-row-cell {
+            color: #5b21b6 !important;
             font-weight: 700 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;

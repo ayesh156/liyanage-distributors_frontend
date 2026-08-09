@@ -43,7 +43,7 @@ const computeElapsedDays = (dateStr) => {
 const getScreenRowTypographyClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
   if (isAgedCableBill(docNo, normalizedAge)) {
-    return 'text-green-600 font-bold dark:text-green-400';
+    return 'text-purple-900 font-bold dark:text-purple-400';
   }
   if (normalizedAge >= 60) {
     return 'text-red-600 font-bold dark:text-red-500';

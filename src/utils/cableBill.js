@@ -1,6 +1,6 @@
 /**
- * Central helper to detect aged cable bills for green-highlighting
- * across all invoice tables and reports.
+ * Central helper to detect aged cable bills for bold dark-purple
+ * highlighting across all invoice tables and reports.
  *
  * @param {string} docNo - The document/invoice number to inspect
  * @param {number} ageDays - The computed age in days

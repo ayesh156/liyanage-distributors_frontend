@@ -167,7 +167,7 @@ const calculateVisibleOutstanding = (rows = []) => {
 
 const getPrintRowAgeTierClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
-  if (isAgedCableBill(docNo, normalizedAge)) return 'age-row-tier-cable-green';
+  if (isAgedCableBill(docNo, normalizedAge)) return 'age-row-tier-cable-purple';
   if (normalizedAge >= 60) return 'age-row-tier-60';
   if (normalizedAge >= 45) return 'age-row-tier-mid';
   return 'age-row-tier-under45';
@@ -176,7 +176,7 @@ const getPrintRowAgeTierClassName = (ageDays, docNo) => {
 const getPrintRowTypographyStyle = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
   if (isAgedCableBill(docNo, normalizedAge)) {
-    return { color: '#16a34a', fontWeight: 700 };
+    return { color: '#5b21b6', fontWeight: 700 };
   }
   if (normalizedAge >= 60) {
     return { color: '#dc2626', fontWeight: 700 };
@@ -575,8 +575,8 @@ const PrintFullReport = ({
             print-color-adjust: exact !important;
           }
 
-          .mans-lanka-master-print .store-ledger-table tr.age-row-tier-cable-green > td.age-row-cell {
-            color: #16a34a !important;
+          .mans-lanka-master-print .store-ledger-table tr.age-row-tier-cable-purple > td.age-row-cell {
+            color: #5b21b6 !important;
             font-weight: 700 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
