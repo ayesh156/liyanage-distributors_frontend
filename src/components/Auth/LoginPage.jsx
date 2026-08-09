@@ -132,8 +132,7 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          <p className="text-center text-xs text-slate-500 mt-4">Credentials: admin / admin</p>
+          
         </div>
 
         <p className="text-center text-xs text-slate-600 mt-6">© 2026 Liyanage Distributors</p>
