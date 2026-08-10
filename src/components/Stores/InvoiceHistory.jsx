@@ -14,6 +14,7 @@ import Pagination from '../ui/Pagination';
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
+import { isPaymentRowType } from '../../utils/paymentDisplay';
 
 const toMoneyNumber = (value) => {
   const numeric = Number(value);
@@ -302,7 +303,15 @@ export default function InvoiceHistory({
                 paginatedTransactions.map((t) => {
                   const balanceDue = computeBalanceDue(t.amount || 0, t.received || 0);
                   const elapsedDays = computeElapsedDays(t.date);
-                  const rowTypographyClassName = getScreenRowTypographyClassName(elapsedDays, t.docNo);
+                  // STRICT RULE (2026-08-10): Conditional Age Colors (Overdue
+                  // Red, Cable Bill Dark Purple) MUST ONLY apply to primary
+                  // INVOICE rows. Payment/Credit rows always render in the
+                  // standard neutral slate text so payment histories never
+                  // oscillate between Purple and Gray as age drops.
+                  const isPaymentRowFlag = isPaymentRowType(t);
+                  const rowTypographyClassName = isPaymentRowFlag
+                    ? 'text-gray-700 font-normal dark:text-slate-400 dark:font-normal'
+                    : getScreenRowTypographyClassName(elapsedDays, t.docNo);
                   const chequeDisplay = t.chequeNo
                     ? <span className="font-mono">{t.chequeNo}{t.bankName ? <span className="ml-1">/ {t.bankName}</span> : null}</span>
                     : '—';

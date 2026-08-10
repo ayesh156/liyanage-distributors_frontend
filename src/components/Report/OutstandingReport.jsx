@@ -9,10 +9,12 @@ import Pagination from '../ui/Pagination';
 import FancyDatePicker from '../ui/FancyDatePicker';
 import { outstandingApi, withPagination } from '../../services/api';
 import { extractData, mapOutstandingRowFromApi } from '../../services/dataMappers';
+import { flattenInvoicePaymentsToStatementRows } from '../../services/statementLedger';
 import useAppStore from '../../hooks/useAppStore';
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
+import { resolveRowDocTypeLabel, isPaymentRowType as isPaymentRow } from '../../utils/paymentDisplay';
 
 const toMoneyNumber = (value) => {
   const numeric = Number(value);
@@ -80,10 +82,15 @@ const getScreenRowTypographyClassName = (ageDays, docNo) => {
   if (normalizedAge >= 60) {
     return 'text-red-600 font-bold dark:text-red-500';
   }
+  // MANDATORY PRINT RULE (2026-08-10): ALL non-highlighted rows MUST
+  // render in Solid Dark Black with font-weight 400 (normal) for crisp,
+  // un-bloated Black & White print legibility. NEVER apply font-medium
+  // or font-bold to force blackness — the color alone guarantees
+  // legibility without artificial bolding.
   if (normalizedAge >= 45) {
-    return 'text-black font-normal dark:text-slate-300 dark:font-normal';
+    return 'text-black font-normal dark:text-black dark:font-normal';
   }
-  return 'text-black font-normal dark:text-slate-300 dark:font-normal';
+  return 'text-black font-normal dark:text-black dark:font-normal';
 };
 
 export default function OutstandingReport({ shops, allShops, generateOutstandingReport }) {
@@ -219,9 +226,8 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   // ═══════════════════════════════════════════════════════════════════
   const paymentMap = useMemo(() => {
     const map = {};
-    const isPaymentRowType = (docType) => docType === 'Payment' || docType === 'Payment (Cash)';
     reportRows.forEach((row) => {
-      if (isPaymentRowType(row.docType)) {
+      if (isPaymentRow(row)) {
         const storeId = String(row.shopId || '').trim();
         // Extract invoice reference: try docNo first (most reliable),
         // fall back to invoiceId text value if docNo is empty.
@@ -319,7 +325,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       }
 
       const group = groups[row.shopId];
-      if (row.docType === 'Invoice' || row.docType === 'Payment' || row.docType === 'Payment (Cash)') {
+      if (row.docType === 'Invoice' || isPaymentRow(row)) {
         group.invoices.push({
           ...row,
           ageDays: computeElapsedDays(row.date),
@@ -345,6 +351,14 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
         const netValue = toMoneyNumber(inv.balanceDue);
         return toMoneyNumber(sum + netValue);
       }, 0);
+
+      // ── UNIFIED ROW FLATTENING (mirrors OutstandingStatementPrintView) ──
+      // Each invoice's itemized payments[] history is expanded into distinct
+      // statement rows: Invoice Parent + one Payment (Method) row per credit.
+      // Aggregation above (totalInvoiced / totalReceived / invoiceCount /
+      // totalOutstanding) continues to run off the compact `invoices` array,
+      // while the screen/print tables render the flattened statement rows.
+      group.flattenedStatementRows = flattenInvoicePaymentsToStatementRows(group.invoices);
     });
 
     return Object.values(groups)
@@ -829,6 +843,9 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                 const indexOfLastRow = groupPage * rowsPerPage;
                 const indexOfFirstRow = indexOfLastRow - rowsPerPage;
                 const paginatedInvoices = sortedInvoices.slice(indexOfFirstRow, indexOfLastRow);
+                // UNIFIED ROW FLATTENING — expand each invoice's itemized payment
+                // history into distinct statement rows (mirrors OutstandingStatementPrintView)
+                const paginatedStatementRows = flattenInvoicePaymentsToStatementRows(paginatedInvoices);
 
                 return (
                   <div key={group.shopId} className="glass-card overflow-hidden">
@@ -934,18 +951,32 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                                   </td>
                                 </tr>
                               ) : (
-                                paginatedInvoices.map((inv, idx) => {
-                                  const dynamicAgeDays = computeElapsedDays(inv.date);
-                                  const displayReceived = toMoneyNumber(inv.received);
-                                  const displayBalanceDue = toMoneyNumber(inv.balanceDue);
-                                  const rowTypographyClassName = getScreenRowTypographyClassName(dynamicAgeDays, inv.docNo);
-                                  const receivedCellTypographyClassName = 'text-black font-bold dark:text-white dark:font-bold';
+                                paginatedStatementRows.map((row, idx) => {
+                                  const dynamicAgeDays = computeElapsedDays(row.date);
+                                  const displayReceived = toMoneyNumber(row.received);
+                                  const displayBalanceDue = toMoneyNumber(row.balanceDue);
+                                  // STRICT RULE (2026-08-10): Conditional Age Colors (Overdue
+                                  // Red, Cable Bill Dark Purple) MUST ONLY apply to primary
+                                  // INVOICE rows. Payment/Credit rows ALWAYS render in Solid
+                                  // Dark Black with font-weight 400 (normal) — never muted
+                                  // gray — so payment histories are 100% legible on Black &
+                                  // White printers and thermal prints.
+                                  const isPaymentRowFlag = isPaymentRow(row);
+                                  const rowTypographyClassName = isPaymentRowFlag
+                                    ? 'text-black font-normal dark:text-black dark:font-normal'
+                                    : getScreenRowTypographyClassName(dynamicAgeDays, row.docNo);
+                                  const receivedCellTypographyClassName = 'text-black font-normal dark:text-black dark:font-normal';
                                   const receivedDisplayText = displayReceived > 0
                                     ? `- ${formatCurrency(displayReceived)}`
                                     : '-';
+                                  // Itemized statement rows: Invoice parent renders "Invoice",
+                                  // each payment row renders "Payment (Cash)" / "Payment (Cheque)".
+                                  // Centralised resolver guarantees payment rows NEVER display
+                                  // "Invoice" under Doc Type.
+                                  const displayDocumentType = resolveRowDocTypeLabel(row);
                                   return (
                                     <tr
-                                      key={inv.id || `${inv.docNo}-${idx}`}
+                                      key={row.key || `${row.docNo}-${idx}`}
                                       className="table-body-row"
                                     >
                                       <td className={`table-cell text-xs ${rowTypographyClassName}`}>
@@ -954,22 +985,22 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                                       <td className={`table-cell ${rowTypographyClassName}`}>
                                         <div className="flex items-center gap-2">
                                           <CalendarDays size={13} className="flex-shrink-0" />
-                                          <span>{formatDate(inv.date)}</span>
+                                          <span>{formatDate(row.date)}</span>
                                         </div>
                                       </td>
                                       <td className={`table-cell font-mono text-xs ${rowTypographyClassName}`}>
-                                        {normalizeInvoiceNo(inv.docNo)}
+                                        {normalizeInvoiceNo(row.docNo)}
                                       </td>
                                       <td className={`table-cell ${rowTypographyClassName}`}>
-                                        <span className="text-xs px-2 py-0.5 rounded-full border border-current/40">
-                                          {inv.docType || 'Invoice'}
+                                        <span className="text-xs px-2 py-0.5 rounded-full border border-current/40 self-start">
+                                          {displayDocumentType}
                                         </span>
                                       </td>
-                                      <td className={`table-cell text-xs max-w-[180px] truncate ${rowTypographyClassName}`} title={inv.description}>
-                                        {inv.description || '—'}
+                                      <td className={`table-cell text-xs max-w-[180px] truncate ${rowTypographyClassName}`} title={row.description}>
+                                        {row.description || '—'}
                                       </td>
                                       <td className={`table-cell text-right font-mono text-sm ${rowTypographyClassName}`}>
-                                        {formatCurrency(inv.amount)}
+                                        {formatCurrency(row.amount)}
                                       </td>
                                       <td className={`table-cell text-right font-mono text-sm ${receivedCellTypographyClassName}`}>
                                         {receivedDisplayText}

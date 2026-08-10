@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import useAppStore from '../../hooks/useAppStore';
-import { buildStatementLedger, filterOutstandingTransactions, getChequeCellMeta } from '../../services/statementLedger';
+import { buildStatementLedger, filterOutstandingTransactions, getChequeCellMeta, flattenInvoicePaymentsToStatementRows } from '../../services/statementLedger';
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
+import { resolveRowDocTypeLabel, isPaymentRowType } from '../../utils/paymentDisplay';
 
 /**
  * PrintFullReport — Premium Multi-Shop Outstanding Report
@@ -128,11 +129,7 @@ const applyStrictAgeFilter = (rows = [], thresholdDays = 60) => {
   });
   rows.forEach((row) => {
     // Safe dual-field predicate: snapshot rows carry docType, ledger rows carry lineType
-    const isPaymentRow = (
-      row.lineType === 'Payment' ||
-      row.docType === 'Payment' ||
-      row.docType === 'Payment (Cash)'
-    );
+    const isPaymentRow = isPaymentRowType(row);
     if (!isPaymentRow || !agedInvoiceKeys.has(buildRowKey(row))) return;
     const key = buildRowKey(row);
     paymentTotalsByKey[key] = toMoneyNumber((paymentTotalsByKey[key] || 0) + toMoneyNumber(row.received || 0));
@@ -181,23 +178,22 @@ const getPrintRowTypographyStyle = (ageDays, docNo) => {
   if (normalizedAge >= 60) {
     return { color: '#dc2626', fontWeight: 700 };
   }
+  // MANDATORY PRINT RULE (2026-08-10): ALL non-highlighted rows MUST
+  // render in Solid Dark Black (#000000) with font-weight 400 (normal)
+  // for crisp, un-bloated Black & White print legibility. NEVER apply
+  // font-weight 500/600 or font-bold to force blackness — the color alone
+  // guarantees legibility without artificial bolding.
   if (normalizedAge >= 45) {
     return { color: '#000000', fontWeight: 400 };
   }
   return { color: '#000000', fontWeight: 400 };
 };
 
-const getDisplayDocumentType = (row) => {
-  if (!row) return '—';
-  // Safe dual-field check: snapshot rows use docType, ledger rows use lineType
-  if (row.lineType === 'Invoice' || row.docType === 'Invoice') return 'Invoice';
-  if (
-    row.lineType === 'Payment' ||
-    row.docType === 'Payment' ||
-    row.docType === 'Payment (Cash)'
-  ) return 'Payment';
-  return row.documentTypeLabel || '—';
-};
+// Doc Type resolution for statement rows.
+// Centralised in paymentDisplay.js — Payment rows MUST NEVER display
+// "Invoice" under Doc Type. They explicitly resolve to
+// "Payment (Cash)" / "Payment (Bank Slip)" / "Payment (Cheque)".
+const getDisplayDocumentType = (row) => resolveRowDocTypeLabel(row);
 
 const PrintFullReport = ({
   isFullReport = false,
@@ -276,11 +272,7 @@ const PrintFullReport = ({
           let resolvedLineType;
           if (row.docType === 'Invoice' || row.lineType === 'Invoice') {
             resolvedLineType = 'Invoice';
-          } else if (
-            row.docType === 'Payment' ||
-            row.docType === 'Payment (Cash)' ||
-            row.lineType === 'Payment'
-          ) {
+          } else if (isPaymentRowType(row)) {
             resolvedLineType = 'Payment';
           } else {
             resolvedLineType = row.lineType || 'Invoice';
@@ -324,12 +316,19 @@ const PrintFullReport = ({
         sortedTransactions = [...outstandingTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
       }
 
-      const visibleStatementRows = olderThan60Days
+      // ── Age filter runs on PRE-FLATTENED rows so payments[] survive ──
+      const ageFilteredRows = olderThan60Days
         ? applyStrictAgeFilter(statementRows, 60)
         : statementRows;
       const visibleTotalOutstanding = olderThan60Days
-        ? calculateVisibleOutstanding(visibleStatementRows)
+        ? calculateVisibleOutstanding(ageFilteredRows)
         : totalOutstanding;
+
+      // ── UNIFIED ROW FLATTENING (mirrors OutstandingStatementPrintView) ──
+      // Expand each invoice's itemized payments[] history into distinct
+      // statement rows: Invoice Parent + one Payment (Method) row per credit.
+      // Idempotent on legacy ledger rows (expanded rows drop payments[]).
+      const visibleStatementRows = flattenInvoicePaymentsToStatementRows(ageFilteredRows);
 
       let postDatedCheques = [];
 
@@ -582,11 +581,23 @@ const PrintFullReport = ({
             print-color-adjust: exact !important;
           }
 
+          /* STRICT RULE (2026-08-10): Conditional Age Colors (Overdue Red,
+             Cable Bill Dark Purple) MUST ONLY apply to primary INVOICE rows.
+             All PAYMENT rows MUST render in Solid Dark Black (#000000)
+             with font-weight 400 (normal) so payment histories are 100%
+             legible on Black & White printers — never muted gray. */
+          .mans-lanka-master-print .store-ledger-table tr.age-row-payment-neutral > td.age-row-cell {
+            color: #000000 !important;
+            font-weight: 400 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
           .mans-lanka-master-print .store-ledger-table tr.age-row-tier-under45 > td.age-row-cell-received,
           .mans-lanka-master-print .store-ledger-table tr.age-row-tier-mid > td.age-row-cell-received,
           .mans-lanka-master-print .store-ledger-table tr.age-row-tier-60 > td.age-row-cell-received {
             color: #000000 !important;
-            font-weight: 700 !important;
+            font-weight: 400 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -964,7 +975,7 @@ const PrintFullReport = ({
                     <span style={{
                       fontSize: '9pt',
                       color: '#444',
-                      fontWeight: 500,
+                      fontWeight: 400,
                       marginLeft: '8px',
                     }}>
                       — {shop.address || shop.route || '—'}
@@ -977,21 +988,21 @@ const PrintFullReport = ({
                     </span>
                   </th>
                 </tr>
-                <tr className="print-column-header-row" style={{
-                  borderTop: 'none',
-                  borderBottom: '1px solid #cbd5e1',
-                  backgroundColor: 'transparent',
-                  color: '#475569',
-                }}>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Posting Date</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Invoice No</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Doc Type</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Cheque No</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Amount (Rs.)</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Received (Credits) (Rs.)</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Balance Due (Rs.)</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Age (Days)</th>
-                </tr>
+                  <tr className="print-column-header-row" style={{
+                    borderTop: 'none',
+                    borderBottom: '1px solid #cbd5e1',
+                    backgroundColor: 'transparent',
+                    color: '#000000',
+                  }}>
+                    <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Posting Date</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Invoice No</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Doc Type</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Cheque No</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Amount (Rs.)</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Received (Credits) (Rs.)</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Balance Due (Rs.)</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Age (Days)</th>
+                  </tr>
               </thead>
               <tbody>
                 {statementRows.length === 0 ? (
@@ -1004,14 +1015,21 @@ const PrintFullReport = ({
                   statementRows.map((row) => {
                     const chequeMeta = getChequeCellMeta(row);
                     // Safe dual-field predicate for cheque meta rendering
-                    const shouldRenderChequeMeta = (
-                      row.lineType === 'Payment' ||
-                      row.docType === 'Payment' ||
-                      row.docType === 'Payment (Cash)'
-                    ) && chequeMeta.showChequeMeta;
+                    const shouldRenderChequeMeta = isPaymentRowType(row) && chequeMeta.showChequeMeta;
                     const elapsedDays = computeAgeDays(row.date);
-                    const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays, row.docNo);
-                    const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays, row.docNo);
+                    // STRICT RULE (2026-08-10): Conditional Age Colors (Overdue
+                    // Red, Cable Bill Dark Purple) MUST ONLY apply to primary
+                    // INVOICE rows. Payment/Credit rows ALWAYS render in Solid
+                    // Dark Black (#000000) with font-weight 400 — never muted
+                    // gray — so payment histories are 100% legible on Black &
+                    // White printers and thermal prints.
+                    const isPaymentRow = isPaymentRowType(row);
+                    const rowAgeTierClassName = isPaymentRow
+                      ? 'age-row-payment-neutral'
+                      : getPrintRowAgeTierClassName(elapsedDays, row.docNo);
+                    const rowTypographyStyle = isPaymentRow
+                      ? { color: '#000000', fontWeight: 400 }
+                      : getPrintRowTypographyStyle(elapsedDays, row.docNo);
 
                     return (
                     <tr key={row.key} className={rowAgeTierClassName} style={{
@@ -1021,7 +1039,9 @@ const PrintFullReport = ({
                     }}>
                       <td className="age-row-cell" style={{ padding: '12px 8px', border: 'none', ...rowTypographyStyle }}>{formatDate(row.date)}</td>
                       <td className="age-row-cell" style={{ padding: '12px 8px', fontFamily: "'Courier New', monospace", border: 'none', ...rowTypographyStyle }}>{normalizeInvoiceNo(row.docNo)}</td>
-                      <td className="age-row-cell" style={{ padding: '12px 8px', border: 'none', ...rowTypographyStyle }}>{getDisplayDocumentType(row)}</td>
+<td className="age-row-cell" style={{ padding: '12px 8px', border: 'none', ...rowTypographyStyle }}>
+  {getDisplayDocumentType(row)}
+</td>
                       <td className="age-row-cell" style={{ padding: '12px 8px', fontFamily: "'Courier New', monospace", fontSize: '8pt', border: 'none', ...rowTypographyStyle }}>
                         {shouldRenderChequeMeta ? (
                           <>
@@ -1041,13 +1061,13 @@ const PrintFullReport = ({
                       }}>
                         {formatAmount(row.amount)}
                       </td>
-                      <td className="age-row-cell age-row-cell-received font-bold text-gray-900" style={{
+                      <td className="age-row-cell age-row-cell-received" style={{
                         textAlign: 'right',
                         padding: '12px 8px',
                         fontFamily: "'Courier New', monospace",
                         border: 'none',
-                        fontWeight: 700,
-                        color: '#111827',
+                        fontWeight: 400,
+                        color: '#000000',
                       }}>
                         {row.received > 0 ? formatCreditAmount(row.received) : '—'}
                       </td>
@@ -1068,7 +1088,7 @@ const PrintFullReport = ({
                   borderTop: '1px solid #cbd5e1',
                   borderBottom: 'none',
                   backgroundColor: 'transparent',
-                  color: '#1e293b',
+                  color: '#000000',
                 }}>
                   <td
                     colSpan={6}
@@ -1077,7 +1097,7 @@ const PrintFullReport = ({
                       fontWeight: 800,
                       fontSize: '10pt',
                       padding: '12px 8px',
-                      color: '#1e293b',
+                      color: '#000000',
                       border: 'none',
                     }}
                   >
@@ -1090,13 +1110,13 @@ const PrintFullReport = ({
                       fontSize: '10pt',
                       padding: '12px 8px',
                       fontFamily: "'Courier New', monospace",
-                      color: '#1e293b',
+                      color: '#000000',
                       border: 'none',
                     }}
                   >
                     {formatAmount(totalOutstanding > 0 ? totalOutstanding : 0)}
                   </td>
-                  <td style={{ padding: '12px 8px', color: '#1e293b', border: 'none' }} />
+                  <td style={{ padding: '12px 8px', color: '#000000', border: 'none' }} />
                 </tr>
               </tbody>
             </table>
@@ -1185,10 +1205,7 @@ const PrintFullReport = ({
                 }
 
                 // Standalone payment rows with their own description
-                const isPaymentRow =
-                  row.lineType === 'Payment' ||
-                  row.docType === 'Payment' ||
-                  row.docType === 'Payment (Cash)';
+                const isPaymentRow = isPaymentRowType(row);
                 if (isPaymentRow) {
                   const payDesc = (
                     row.description ||
@@ -1274,7 +1291,7 @@ const PrintFullReport = ({
                           }}>
                             {normalizeInvoiceNo(row.docNo)}
                           </strong>
-                          <span style={{ color: '#6b7280' }}>-</span>
+                          <span style={{ color: '#000000' }}>-</span>
                           <span style={{ color: '#dc2626 !important' }}>{invDesc}</span>
                         </div>
                       ))}
@@ -1316,7 +1333,7 @@ const PrintFullReport = ({
                           }}>
                             {parentInvoiceNo}
                           </strong>
-                          <span style={{ color: '#6b7280' }}>-</span>
+                          <span style={{ color: '#000000' }}>-</span>
                           <span style={{ color: '#dc2626 !important' }}>{payDesc}</span>
                         </div>
                       ))}

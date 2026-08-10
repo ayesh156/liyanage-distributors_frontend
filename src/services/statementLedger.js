@@ -137,6 +137,127 @@ const buildStandalonePaymentRow = (transaction, now) => {
   };
 };
 
+/**
+ * flattenInvoicePaymentsToStatementRows
+ * ═══════════════════════════════════════════════════════════════════════
+ * UNIFIED ROW FLATTENING (mirrors OutstandingStatementPrintView).
+ *
+ * Converts already-mapped outstanding-report invoice rows (which carry an
+ * itemized `payments[]` history) into distinct statement rows:
+ *
+ *   Row 1 (Invoice Parent):
+ *     date        = invoice date
+ *     docNo       = invoice docNo (normalized at render via normalizeInvoiceNo)
+ *     lineType    = 'Invoice'
+ *     amount      = full invoice amount
+ *     received    = 0
+ *     balanceDue  = full invoice amount
+ *
+ *   Rows 2..N (Itemized Payment Rows, chronological):
+ *     date        = payment date
+ *     docNo       = same invoice docNo
+ *     lineType    = 'Payment'
+ *     documentTypeLabel = "Payment (Cash)" | "Payment (Cheque)" | "Payment (Bank Slip)"
+ *     amount      = running balance before this payment
+ *     received    = exact payment credit amount
+ *     balanceDue  = running balance after deduction
+ *
+ * Standalone Payment rows and Invoice rows WITHOUT a payments[] array pass
+ * through untouched so their authoritative net balanceDue/received fields
+ * remain intact on screen and print.
+ */
+export const flattenInvoicePaymentsToStatementRows = (invoiceRows = []) => {
+  const rows = [];
+
+  (Array.isArray(invoiceRows) ? invoiceRows : []).forEach((invoice) => {
+    if (!invoice) return;
+
+    const rawDocType = String(invoice.docType || '').trim();
+    const isPaymentDocument = rawDocType === 'Payment' || rawDocType === 'Payment (Cash)';
+    const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+
+    // ── Pass-through path ──────────────────────────────────────────────────
+    if (isPaymentDocument || payments.length === 0) {
+      rows.push({
+        ...invoice,
+        key: invoice.key || `row-${invoice.id || invoice.docNo || invoice.date || rows.length}`,
+        lineType: isPaymentDocument ? 'Payment' : invoice.lineType || 'Invoice',
+        // CRITICAL: A pass-through Payment document MUST NEVER retain the
+        // parent/source docType 'Invoice' — it would mislabel the Doc Type
+        // column in report tables. Force its docType back to 'Payment'.
+        docType: isPaymentDocument ? 'Payment' : (invoice.docType || invoice.lineType || 'Invoice'),
+      });
+      return;
+    }
+
+    // ── Expand path: Invoice Parent + Itemized Payment History ─────────────
+    const invoiceId = invoice.id || invoice.docNo || invoice.date;
+    const invoiceAmount = roundCurrency(invoice.amount);
+
+    // Shared wrapper that drops the raw `payments[]` array from expanded rows.
+    // This keeps the output idempotent — re-running the flattener on already
+    // flattened rows never re-expands the payment history a second time.
+    const buildExpandedRow = (overrides) => {
+      const { payments: _payments, ...base } = invoice;
+      return { ...base, ...overrides };
+    };
+
+    // Row 1 — Invoice Parent (full amount, zero received, full balance)
+    rows.push(buildExpandedRow({
+      key: `invoice-${invoiceId}`,
+      parentKey: invoiceId,
+      lineType: 'Invoice',
+      docType: 'Invoice',
+      documentTypeLabel: 'Invoice',
+      amount: invoiceAmount,
+      received: 0,
+      balanceDue: invoiceAmount,
+      finalOutstanding: invoiceAmount,
+    }));
+
+    // Rows 2..N — Itemized Payment Rows (chronological)
+    const sortedPayments = [...payments].sort(
+      (left, right) => new Date(left.date || invoice.date) - new Date(right.date || invoice.date),
+    );
+    let priorBalanceDue = invoiceAmount;
+
+    sortedPayments.forEach((payment, paymentIndex) => {
+      const paymentAmount = roundCurrency(payment.amount);
+      const paymentMode = resolvePaymentMode(
+        payment.paymentMode || payment.paymentMethod,
+        payment.chequeNo || invoice.chequeNo,
+        payment.bankName || invoice.bankName,
+        payment.branchName || invoice.branchName,
+      );
+      const nextBalanceDue = Math.max(0, roundCurrency(priorBalanceDue - paymentAmount));
+
+      rows.push(buildExpandedRow({
+        key: `payment-${invoiceId}-${payment.id || paymentIndex}`,
+        parentKey: invoiceId,
+        date: payment.date || invoice.date,
+        lineType: 'Payment',
+        // CRITICAL: Override the inherited parent docType ('Invoice') so
+        // report Doc Type columns NEVER label payment rows as "Invoice".
+        docType: 'Payment',
+        documentTypeLabel: `Payment (${paymentMode})`,
+        paymentMode,
+        chequeNo: String(payment.chequeNo || '').trim(),
+        bankName: String(payment.bankName || '').trim(),
+        branchName: String(payment.branchName || '').trim(),
+        amount: priorBalanceDue,
+        received: paymentAmount,
+        balanceDue: nextBalanceDue,
+        finalOutstanding: nextBalanceDue,
+        description: payment.description || '',
+      }));
+
+      priorBalanceDue = nextBalanceDue;
+    });
+  });
+
+  return rows;
+};
+
 export const buildStatementLedger = (transactions = [], currentDate = new Date()) => {
   if (!Array.isArray(transactions) || transactions.length === 0) {
     return { statementRows: [], totalOutstanding: 0, invoiceSummaries: [] };

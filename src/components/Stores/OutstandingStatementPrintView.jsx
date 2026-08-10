@@ -4,6 +4,7 @@ import { buildStatementLedger, getChequeCellMeta } from '../../services/statemen
 import { formatDateYMD } from '../../utils/date';
 import { isAgedCableBill } from '../../utils/cableBill';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
+import { isPaymentRowType } from '../../utils/paymentDisplay';
 
 const formatAmount = (val) => Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -35,10 +36,15 @@ const getPrintRowTypographyStyle = (ageDays, docNo) => {
     return { color: '#5b21b6', fontWeight: 700 };
   }
   if (normalizedAge >= 60) {
-    return { color: '#ff0000', fontWeight: 700 };
+    return { color: '#dc2626', fontWeight: 700 };
   }
+  // MANDATORY PRINT RULE (2026-08-10): ALL non-highlighted rows MUST
+  // render in Solid Dark Black (#000000) with font-weight 400 (normal)
+  // for crisp, un-bloated Black & White print legibility. NEVER apply
+  // font-weight 500/600 or font-bold to force blackness — the color alone
+  // guarantees legibility without artificial bolding.
   if (normalizedAge >= 45) {
-    return { color: '#000000', fontWeight: 700 };
+    return { color: '#000000', fontWeight: 400 };
   }
   return { color: '#000000', fontWeight: 400 };
 };
@@ -286,13 +292,13 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
 
           .print-statement-root .statement-ledger-table tr.statement-age-row-tier-45 > td.statement-age-row-cell {
             color: #000000 !important;
-            font-weight: 700 !important;
+            font-weight: 400 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
 
           .print-statement-root .statement-ledger-table tr.statement-age-row-tier-60 > td.statement-age-row-cell {
-            color: #ff0000 !important;
+            color: #dc2626 !important;
             font-weight: 700 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -301,6 +307,18 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
           .print-statement-root .statement-ledger-table tr.statement-age-row-tier-cable-purple > td.statement-age-row-cell {
             color: #5b21b6 !important;
             font-weight: 700 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* STRICT RULE (2026-08-10): Conditional Age Colors (Overdue Red,
+             Cable Bill Dark Purple) MUST ONLY apply to primary INVOICE rows.
+             All PAYMENT rows MUST render in Solid Dark Black (#000000)
+             with font-weight 400 (normal) so payment histories are 100%
+             legible on Black & White printers — never muted gray. */
+          .print-statement-root .statement-ledger-table tr.statement-age-row-payment-neutral > td.statement-age-row-cell {
+            color: #000000 !important;
+            font-weight: 400 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -448,16 +466,16 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
             borderTop: 'none',
             borderBottom: '1px solid #cbd5e1',
             backgroundColor: 'transparent',
-            color: '#475569',
+            color: '#000000',
           }}>
-            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Posting Date</th>
-            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Document No</th>
-            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Document Type</th>
-            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', border: 'none' }}>Cheque No</th>
-            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Amount (Rs.)</th>
-            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Received (Credits) (Rs.)</th>
-            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Balance Due (Rs.)</th>
-            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', border: 'none' }}>Age (Days)</th>
+            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Posting Date</th>
+            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Document No</th>
+            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Document Type</th>
+            <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: 600, color: '#000000', border: 'none' }}>Cheque No</th>
+            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Amount (Rs.)</th>
+            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Received (Credits) (Rs.)</th>
+            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Balance Due (Rs.)</th>
+            <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: '#000000', border: 'none' }}>Age (Days)</th>
           </tr>
         </thead>
         <tbody>
@@ -472,8 +490,19 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
               const chequeMeta = getChequeCellMeta(row);
               const shouldRenderChequeMeta = row.lineType === 'Payment' && chequeMeta.showChequeMeta;
               const elapsedDays = computeAgeDays(row.date);
-              const rowAgeTierClassName = getPrintRowAgeTierClassName(elapsedDays, row.docNo);
-              const rowTypographyStyle = getPrintRowTypographyStyle(elapsedDays, row.docNo);
+              // STRICT RULE (2026-08-10): Conditional Age Colors (Overdue
+              // Red, Cable Bill Dark Purple) MUST ONLY apply to primary
+              // INVOICE rows. Payment/Credit rows ALWAYS render in Solid
+              // Dark Black (#000000) with font-weight 400 — never muted
+              // gray — so payment histories are 100% legible on Black &
+              // White printers and thermal prints.
+              const isPaymentRow = isPaymentRowType(row);
+              const rowAgeTierClassName = isPaymentRow
+                ? 'statement-age-row-payment-neutral'
+                : getPrintRowAgeTierClassName(elapsedDays, row.docNo);
+              const rowTypographyStyle = isPaymentRow
+                ? { color: '#000000', fontWeight: 400 }
+                : getPrintRowTypographyStyle(elapsedDays, row.docNo);
 
               return (
               <tr key={row.key} className={rowAgeTierClassName} style={{
@@ -518,7 +547,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
               borderTop: '1px solid #cbd5e1',
               borderBottom: 'none',
               backgroundColor: 'transparent',
-              color: '#1e293b',
+              color: '#000000',
               border: 'none',
             }}>
               Total Outstanding
@@ -532,7 +561,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
               borderTop: '1px solid #cbd5e1',
               borderBottom: 'none',
               backgroundColor: 'transparent',
-              color: '#1e293b',
+              color: '#000000',
               border: 'none',
             }}>
               {formatAmount(totalOutstanding > 0 ? totalOutstanding : 0)}
@@ -762,7 +791,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                   display: 'block',
                   fontSize: '9pt',
                   fontWeight: 700,
-                  color: '#1e293b',
+                  color: '#000000',
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
                   marginBottom: '4px',
@@ -774,7 +803,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                     key={`inv-note-${row.key || row.docNo}`}
                     style={{
                       fontSize: '8.5pt',
-                      color: '#374151',
+                      color: '#000000',
                       lineHeight: '1.5',
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -785,11 +814,11 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                     <strong style={{
                       fontFamily: "'Courier New', monospace",
                       whiteSpace: 'nowrap',
-                      color: '#111827',
+                      color: '#000000',
                     }}>
                       {normalizeInvoiceNo(row.docNo)}
                     </strong>
-                    <span style={{ color: '#6b7280' }}>-</span>
+                    <span style={{ color: '#000000' }}>-</span>
                     <span>{invDesc}</span>
                   </div>
                 ))}
@@ -803,7 +832,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                   display: 'block',
                   fontSize: '9pt',
                   fontWeight: 700,
-                  color: '#1e293b',
+                  color: '#000000',
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
                   marginBottom: '4px',
@@ -815,7 +844,7 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                     key={`pay-note-${parentInvoiceNo}-${idx}`}
                     style={{
                       fontSize: '8.5pt',
-                      color: '#374151',
+                      color: '#000000',
                       lineHeight: '1.5',
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -826,11 +855,11 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                     <strong style={{
                       fontFamily: "'Courier New', monospace",
                       whiteSpace: 'nowrap',
-                      color: '#111827',
+                      color: '#000000',
                     }}>
                       {parentInvoiceNo}
                     </strong>
-                    <span style={{ color: '#6b7280' }}>-</span>
+                    <span style={{ color: '#000000' }}>-</span>
                     <span>{payDesc}</span>
                   </div>
                 ))}
