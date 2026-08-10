@@ -135,7 +135,7 @@ export default function LoginPage() {
           
         </div>
 
-        <p className="text-center text-xs text-slate-600 mt-6">© 2026 Liyanage Distributors</p>
+        <p className="text-center text-xs text-slate-600 mt-6">© 2026 Powered by Nebulainfinite</p>
       </div>
     </div>
   );
