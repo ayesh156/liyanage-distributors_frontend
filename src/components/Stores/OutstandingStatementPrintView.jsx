@@ -322,6 +322,22 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+
+          /* RECEIVED CREDITS HIGHLIGHT RULE (2026-08-12): ALL values under
+             the Received (Credits) column MUST render in Bold weight
+             (font-weight: 700) Solid Black (#000000) — across EVERY row
+             tier including Overdue Red and Cable Bill Purple — for
+             immediate visual distinction on printouts and screens. */
+          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-under45 > td.statement-age-row-cell-received,
+          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-45 > td.statement-age-row-cell-received,
+          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-60 > td.statement-age-row-cell-received,
+          .print-statement-root .statement-ledger-table tr.statement-age-row-tier-cable-purple > td.statement-age-row-cell-received,
+          .print-statement-root .statement-ledger-table tr.statement-age-row-payment-neutral > td.statement-age-row-cell-received {
+            color: #000000 !important;
+            font-weight: 700 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
         @media screen {
           .print-only { display: none !important; }
@@ -526,7 +542,11 @@ export default function OutstandingStatementPrintView({ shop, transactions, outs
                 <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'right', fontFamily: "'Courier New', monospace", border: 'none', ...rowTypographyStyle }}>
                   {formatAmount(row.amount)}
                 </td>
-                <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'right', fontFamily: "'Courier New', monospace", border: 'none', ...rowTypographyStyle }}>
+                {/* RECEIVED CREDITS HIGHLIGHT RULE (2026-08-12): Non-zero
+                    received credit values MUST render in BOLD weight
+                    (font-weight: 700) Solid Black (#000000) for immediate
+                    visual distinction on printouts and screens. */}
+                <td className="statement-age-row-cell statement-age-row-cell-received" style={{ padding: '12px 8px', textAlign: 'right', fontFamily: "'Courier New', monospace", border: 'none', fontWeight: 700, color: '#000000' }}>
                   {row.lineType === 'Payment' ? formatCreditAmount(row.received) : '—'}
                 </td>
                 <td className="statement-age-row-cell" style={{ padding: '12px 8px', textAlign: 'right', fontFamily: "'Courier New', monospace", border: 'none', ...rowTypographyStyle }}>

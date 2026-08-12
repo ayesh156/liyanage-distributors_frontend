@@ -593,11 +593,18 @@ const PrintFullReport = ({
             print-color-adjust: exact !important;
           }
 
+          /* RECEIVED CREDITS HIGHLIGHT RULE (2026-08-12): ALL values under
+             the Received (Credits) column MUST render in Bold weight
+             (font-weight: 700) Solid Black (#000000) — across EVERY row
+             tier including Overdue Red and Cable Bill Purple — for
+             immediate visual distinction on printouts and screens. */
           .mans-lanka-master-print .store-ledger-table tr.age-row-tier-under45 > td.age-row-cell-received,
           .mans-lanka-master-print .store-ledger-table tr.age-row-tier-mid > td.age-row-cell-received,
-          .mans-lanka-master-print .store-ledger-table tr.age-row-tier-60 > td.age-row-cell-received {
+          .mans-lanka-master-print .store-ledger-table tr.age-row-tier-60 > td.age-row-cell-received,
+          .mans-lanka-master-print .store-ledger-table tr.age-row-tier-cable-purple > td.age-row-cell-received,
+          .mans-lanka-master-print .store-ledger-table tr.age-row-payment-neutral > td.age-row-cell-received {
             color: #000000 !important;
-            font-weight: 400 !important;
+            font-weight: 700 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -1061,12 +1068,16 @@ const PrintFullReport = ({
                       }}>
                         {formatAmount(row.amount)}
                       </td>
+                      {/* RECEIVED CREDITS HIGHLIGHT RULE (2026-08-12): Non-zero
+                          received credit values MUST render in BOLD weight
+                          (font-weight: 700) Solid Black (#000000) for immediate
+                          visual distinction on printouts and screens. */}
                       <td className="age-row-cell age-row-cell-received" style={{
                         textAlign: 'right',
                         padding: '12px 8px',
                         fontFamily: "'Courier New', monospace",
                         border: 'none',
-                        fontWeight: 400,
+                        fontWeight: 700,
                         color: '#000000',
                       }}>
                         {row.received > 0 ? formatCreditAmount(row.received) : '—'}

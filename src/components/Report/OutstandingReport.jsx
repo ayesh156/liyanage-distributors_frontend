@@ -965,7 +965,12 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                                   const rowTypographyClassName = isPaymentRowFlag
                                     ? 'text-black font-normal dark:text-black dark:font-normal'
                                     : getScreenRowTypographyClassName(dynamicAgeDays, row.docNo);
-                                  const receivedCellTypographyClassName = 'text-black font-normal dark:text-black dark:font-normal';
+                                  // RECEIVED CREDITS HIGHLIGHT RULE (2026-08-12):
+                                  // Non-zero received credit values MUST render in
+                                  // BOLD (font-weight: 700) Solid Black (#000000)
+                                  // for immediate visual distinction on screens
+                                  // and printouts.
+                                  const receivedCellTypographyClassName = 'text-black font-bold dark:text-black dark:font-bold';
                                   const receivedDisplayText = displayReceived > 0
                                     ? `- ${formatCurrency(displayReceived)}`
                                     : '-';
