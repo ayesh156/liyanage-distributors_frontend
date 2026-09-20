@@ -77,20 +77,15 @@ const getSalesPersonName = (shop) => {
 const getScreenRowTypographyClassName = (ageDays, docNo) => {
   const normalizedAge = Number(ageDays) || 0;
   if (isAgedCableBill(docNo, normalizedAge)) {
-    return 'text-purple-900 font-bold dark:text-purple-400';
+    return 'text-purple-900 font-bold dark:text-purple-400 dark:font-bold';
   }
   if (normalizedAge >= 60) {
-    return 'text-red-600 font-bold dark:text-red-500';
+    return 'text-red-600 font-bold dark:text-red-500 dark:font-bold';
   }
-  // MANDATORY PRINT RULE (2026-08-10): ALL non-highlighted rows MUST
-  // render in Solid Dark Black with font-weight 400 (normal) for crisp,
-  // un-bloated Black & White print legibility. NEVER apply font-medium
-  // or font-bold to force blackness — the color alone guarantees
-  // legibility without artificial bolding.
   if (normalizedAge >= 45) {
-    return 'text-black font-normal dark:text-black dark:font-normal';
+    return 'text-black font-bold dark:text-white dark:font-bold';
   }
-  return 'text-black font-normal dark:text-black dark:font-normal';
+  return 'text-black font-normal dark:text-slate-300 dark:font-normal';
 };
 
 export default function OutstandingReport({ shops, allShops, generateOutstandingReport }) {
@@ -963,14 +958,9 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                                   // White printers and thermal prints.
                                   const isPaymentRowFlag = isPaymentRow(row);
                                   const rowTypographyClassName = isPaymentRowFlag
-                                    ? 'text-black font-normal dark:text-black dark:font-normal'
+                                    ? 'text-black font-normal dark:text-slate-300 dark:font-normal'
                                     : getScreenRowTypographyClassName(dynamicAgeDays, row.docNo);
-                                  // RECEIVED CREDITS HIGHLIGHT RULE (2026-08-12):
-                                  // Non-zero received credit values MUST render in
-                                  // BOLD (font-weight: 700) Solid Black (#000000)
-                                  // for immediate visual distinction on screens
-                                  // and printouts.
-                                  const receivedCellTypographyClassName = 'text-black font-bold dark:text-black dark:font-bold';
+                                  const receivedCellTypographyClassName = 'text-black font-bold dark:text-white dark:font-bold';
                                   const receivedDisplayText = displayReceived > 0
                                     ? `- ${formatCurrency(displayReceived)}`
                                     : '-';
