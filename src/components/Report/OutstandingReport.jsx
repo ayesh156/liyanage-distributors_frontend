@@ -96,6 +96,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('');
   const [olderThan60Days, setOlderThan60Days] = useState(false);
+  const [olderThan45Days, setOlderThan45Days] = useState(false);
   const [olderThan45Cable, setOlderThan45Cable] = useState(false);
   const [omniSearch, setOmniSearch] = useState('');
   const [showOmniSuggestions, setShowOmniSuggestions] = useState(false);
@@ -112,7 +113,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   const [rowsPerPage, setRowsPerPage] = useState(15);
 
   // Reset all per-group pages when shop selection or rows-per-page changes
-  useEffect(() => { setCurrentPages({}); }, [startDate, endDate, selectedYear, selectedMonth, olderThan60Days, olderThan45Cable, rowsPerPage]);
+  useEffect(() => { setCurrentPages({}); }, [startDate, endDate, selectedYear, selectedMonth, olderThan60Days, olderThan45Days, olderThan45Cable, rowsPerPage]);
 
   // Helper: get/set current page for a specific shop group
   const getGroupPage = (shopId) => currentPages[shopId] || 1;
@@ -279,15 +280,18 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
     });
   }, [reportRows, paymentMap]);
 
-  // Apply the 60-day age filter or 45-day cable filter on top of already-consolidated data
+  // Apply the 60-day age filter, 45-day age filter, or 45-day cable filter on top of already-consolidated data
   const ageAwareReportRows = useMemo(() => {
-    if (!olderThan60Days && !olderThan45Cable) return consolidatedReportRows;
+    if (!olderThan60Days && !olderThan45Days && !olderThan45Cable) return consolidatedReportRows;
 
     return consolidatedReportRows
       .filter((row) => {
         const elapsed = computeElapsedDays(row?.date);
         const isCable = isCableBill(row?.docNo, row?.description);
 
+        if (olderThan45Days) {
+          return elapsed >= 45;
+        }
         if (olderThan60Days && olderThan45Cable) {
           return elapsed >= 60 || (isCable && elapsed >= 45);
         }
@@ -300,7 +304,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
         return true;
       })
       .filter((row) => toMoneyNumber(row.balanceDue) > 0);
-  }, [consolidatedReportRows, olderThan60Days, olderThan45Cable]);
+  }, [consolidatedReportRows, olderThan60Days, olderThan45Days, olderThan45Cable]);
 
   const filteredReportRows = useMemo(() => {
     if (!selectedStoreId) return ageAwareReportRows;
@@ -470,6 +474,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
     setSelectedYear('');
     setSelectedMonth('');
     setOlderThan60Days(false);
+    setOlderThan45Days(false);
     setOlderThan45Cable(false);
     setOmniSearch('');
     setSelectedStoreId(null);
@@ -563,7 +568,10 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
               onChange={(event) => {
                 const checked = event.target.checked;
                 setOlderThan60Days(checked);
-                if (checked) setOlderThan45Cable(false);
+                if (checked) {
+                  setOlderThan45Days(false);
+                  setOlderThan45Cable(false);
+                }
               }}
               className="h-4 w-4 rounded border-gray-300 text-accent-600 focus:ring-accent-500"
             />
@@ -574,11 +582,32 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
           <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
             <input
               type="checkbox"
+              checked={olderThan45Days}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setOlderThan45Days(checked);
+                if (checked) {
+                  setOlderThan60Days(false);
+                  setOlderThan45Cable(false);
+                }
+              }}
+              className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+            />
+            <span className={olderThan45Days ? 'text-amber-600 dark:text-amber-400 font-bold' : ''}>
+              Age {'>'} 45 Days
+            </span>
+          </label>
+          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+            <input
+              type="checkbox"
               checked={olderThan45Cable}
               onChange={(event) => {
                 const checked = event.target.checked;
                 setOlderThan45Cable(checked);
-                if (checked) setOlderThan60Days(false);
+                if (checked) {
+                  setOlderThan60Days(false);
+                  setOlderThan45Days(false);
+                }
               }}
               className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
             />
@@ -823,6 +852,9 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       <div id="print-content" className="w-full space-y-4">
         {olderThan60Days && (
           <div className="text-red-600 text-2xl font-bold mb-4">60 day Overdue</div>
+        )}
+        {olderThan45Days && (
+          <div className="text-amber-600 dark:text-amber-400 text-2xl font-bold mb-4">45 Day Overdue</div>
         )}
         {olderThan45Cable && (
           <div className="text-purple-900 dark:text-purple-400 text-2xl font-bold mb-4">45 Day Cable Overdue</div>
@@ -1107,6 +1139,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       <PrintFullReport
         isFullReport={true}
         olderThan60Days={olderThan60Days}
+        olderThan45Days={olderThan45Days}
         olderThan45Cable={olderThan45Cable}
         reportRowsOverride={filteredReportRows}
         marketOutstandingTotalOverride={sharedTotalMarketOutstanding}

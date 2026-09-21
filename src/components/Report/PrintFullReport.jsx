@@ -67,7 +67,10 @@ const computeAgeDays = (dateStr) => {
   if (!dateStr) return 0;
   const postingDate = new Date(dateStr);
   if (Number.isNaN(postingDate.getTime())) return 0;
-  const elapsedDays = Math.max(0, Math.floor((new Date() - postingDate) / (1000 * 60 * 60 * 24)));
+  postingDate.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const elapsedDays = Math.max(0, Math.floor((now - postingDate) / (1000 * 60 * 60 * 24)));
   return elapsedDays;
 };
 
@@ -201,6 +204,7 @@ const getDisplayDocumentType = (row) => resolveRowDocTypeLabel(row);
 const PrintFullReport = ({
   isFullReport = false,
   olderThan60Days = false,
+  olderThan45Days = false,
   olderThan45Cable = false,
   shopOverride = null,
   transactionsOverride = null,
@@ -321,12 +325,14 @@ const PrintFullReport = ({
       }
 
       // ── Age filter runs on PRE-FLATTENED rows so payments[] survive ──
-      const ageFilteredRows = olderThan60Days
+      const ageFilteredRows = olderThan45Days
+        ? applyStrictAgeFilter(statementRows, 45, false)
+        : olderThan60Days
         ? applyStrictAgeFilter(statementRows, 60)
         : olderThan45Cable
         ? applyStrictAgeFilter(statementRows, 45, true)
         : statementRows;
-      const visibleTotalOutstanding = (olderThan60Days || olderThan45Cable)
+      const visibleTotalOutstanding = (olderThan45Days || olderThan60Days || olderThan45Cable)
         ? calculateVisibleOutstanding(ageFilteredRows)
         : totalOutstanding;
 
@@ -392,7 +398,7 @@ const PrintFullReport = ({
 
       return { shop, statementRows: visibleStatementRows, totalOutstanding: visibleTotalOutstanding, postDatedCheques };
     }).filter(({ totalOutstanding, statementRows }) => totalOutstanding > 0 && statementRows.length > 0);
-  }, [activeShops, activeTransactions, olderThan60Days, olderThan45Cable]);
+  }, [activeShops, activeTransactions, olderThan60Days, olderThan45Days, olderThan45Cable]);
 
   const groupByRoute = useMemo(() => {
     return shopReportData.reduce((acc, item) => {
@@ -713,6 +719,14 @@ const PrintFullReport = ({
             print-color-adjust: exact !important;
           }
 
+          .overdue-title-strong.cable-overdue {
+            color: #5b21b6 !important;
+          }
+
+          .overdue-title-strong.age45-overdue {
+            color: #d97706 !important;
+          }
+
           .store-header-meta-banner {
             page-break-after: avoid !important;
             break-after: avoid-page !important;
@@ -880,8 +894,11 @@ const PrintFullReport = ({
         {olderThan60Days && (
           <div className="overdue-title-strong text-red-600 font-bold text-2xl mb-4">60 day Overdue</div>
         )}
+        {olderThan45Days && (
+          <div className="overdue-title-strong age45-overdue text-amber-600 font-bold text-2xl mb-4">45 Day Overdue</div>
+        )}
         {olderThan45Cable && (
-          <div className="overdue-title-strong text-purple-900 font-bold text-2xl mb-4">45 Day Cable Overdue</div>
+          <div className="overdue-title-strong cable-overdue text-purple-900 font-bold text-2xl mb-4">45 Day Cable Overdue</div>
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
