@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import useAppStore from '../../hooks/useAppStore';
 import { buildStatementLedger, filterOutstandingTransactions, getChequeCellMeta, flattenInvoicePaymentsToStatementRows } from '../../services/statementLedger';
 import { formatDateYMD } from '../../utils/date';
-import { isAgedCableBill } from '../../utils/cableBill';
+import { isAgedCableBill, isCableBill } from '../../utils/cableBill';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 import { resolveRowDocTypeLabel, isPaymentRowType } from '../../utils/paymentDisplay';
 
@@ -71,7 +71,7 @@ const computeAgeDays = (dateStr) => {
   return elapsedDays;
 };
 
-const applyStrictAgeFilter = (rows = [], thresholdDays = 60) => {
+const applyStrictAgeFilter = (rows = [], thresholdDays = 60, cableOnly = false) => {
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
   // ── CASE-INSENSITIVE KEY NORMALIZER ──────────────────────────────────────
@@ -108,7 +108,10 @@ const applyStrictAgeFilter = (rows = [], thresholdDays = 60) => {
   // Identify invoice rows that are >= threshold days old
   // Safe dual-field predicate: snapshot rows carry docType, ledger rows carry lineType
   const agedInvoices = rows.filter(
-    (row) => (row.lineType === 'Invoice' || row.docType === 'Invoice') && computeAgeDays(row?.date) >= thresholdDays,
+    (row) =>
+      (row.lineType === 'Invoice' || row.docType === 'Invoice') &&
+      computeAgeDays(row?.date) >= thresholdDays &&
+      (!cableOnly || isCableBill(row?.docNo || row?.invoiceId, row?.description)),
   );
 
   if (agedInvoices.length === 0) return [];
@@ -162,17 +165,17 @@ const calculateVisibleOutstanding = (rows = []) => {
   );
 };
 
-const getPrintRowAgeTierClassName = (ageDays, docNo) => {
+const getPrintRowAgeTierClassName = (ageDays, docNo, description = '') => {
   const normalizedAge = Number(ageDays) || 0;
-  if (isAgedCableBill(docNo, normalizedAge)) return 'age-row-tier-cable-purple';
+  if (isAgedCableBill(docNo, normalizedAge, description)) return 'age-row-tier-cable-purple';
   if (normalizedAge >= 60) return 'age-row-tier-60';
   if (normalizedAge >= 45) return 'age-row-tier-mid';
   return 'age-row-tier-under45';
 };
 
-const getPrintRowTypographyStyle = (ageDays, docNo) => {
+const getPrintRowTypographyStyle = (ageDays, docNo, description = '') => {
   const normalizedAge = Number(ageDays) || 0;
-  if (isAgedCableBill(docNo, normalizedAge)) {
+  if (isAgedCableBill(docNo, normalizedAge, description)) {
     return { color: '#5b21b6', fontWeight: 700 };
   }
   if (normalizedAge >= 60) {
@@ -198,6 +201,7 @@ const getDisplayDocumentType = (row) => resolveRowDocTypeLabel(row);
 const PrintFullReport = ({
   isFullReport = false,
   olderThan60Days = false,
+  olderThan45Cable = false,
   shopOverride = null,
   transactionsOverride = null,
   reportRowsOverride = null,
@@ -319,8 +323,10 @@ const PrintFullReport = ({
       // ── Age filter runs on PRE-FLATTENED rows so payments[] survive ──
       const ageFilteredRows = olderThan60Days
         ? applyStrictAgeFilter(statementRows, 60)
+        : olderThan45Cable
+        ? applyStrictAgeFilter(statementRows, 45, true)
         : statementRows;
-      const visibleTotalOutstanding = olderThan60Days
+      const visibleTotalOutstanding = (olderThan60Days || olderThan45Cable)
         ? calculateVisibleOutstanding(ageFilteredRows)
         : totalOutstanding;
 
@@ -386,7 +392,7 @@ const PrintFullReport = ({
 
       return { shop, statementRows: visibleStatementRows, totalOutstanding: visibleTotalOutstanding, postDatedCheques };
     }).filter(({ totalOutstanding, statementRows }) => totalOutstanding > 0 && statementRows.length > 0);
-  }, [activeShops, activeTransactions, olderThan60Days]);
+  }, [activeShops, activeTransactions, olderThan60Days, olderThan45Cable]);
 
   const groupByRoute = useMemo(() => {
     return shopReportData.reduce((acc, item) => {
@@ -874,6 +880,9 @@ const PrintFullReport = ({
         {olderThan60Days && (
           <div className="overdue-title-strong text-red-600 font-bold text-2xl mb-4">60 day Overdue</div>
         )}
+        {olderThan45Cable && (
+          <div className="overdue-title-strong text-purple-900 font-bold text-2xl mb-4">45 Day Cable Overdue</div>
+        )}
 
         {/* ═══════════════════════════════════════════════════════════════════
             PHASE 2: Per-shop blocks — fully hydrated data from DB
@@ -1033,10 +1042,10 @@ const PrintFullReport = ({
                     const isPaymentRow = isPaymentRowType(row);
                     const rowAgeTierClassName = isPaymentRow
                       ? 'age-row-payment-neutral'
-                      : getPrintRowAgeTierClassName(elapsedDays, row.docNo);
+                      : getPrintRowAgeTierClassName(elapsedDays, row.docNo, row.description);
                     const rowTypographyStyle = isPaymentRow
                       ? { color: '#000000', fontWeight: 400 }
-                      : getPrintRowTypographyStyle(elapsedDays, row.docNo);
+                      : getPrintRowTypographyStyle(elapsedDays, row.docNo, row.description);
 
                     return (
                     <tr key={row.key} className={rowAgeTierClassName} style={{

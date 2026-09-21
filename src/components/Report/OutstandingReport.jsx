@@ -12,7 +12,7 @@ import { extractData, mapOutstandingRowFromApi } from '../../services/dataMapper
 import { flattenInvoicePaymentsToStatementRows } from '../../services/statementLedger';
 import useAppStore from '../../hooks/useAppStore';
 import { formatDateYMD } from '../../utils/date';
-import { isAgedCableBill } from '../../utils/cableBill';
+import { isAgedCableBill, isCableBill } from '../../utils/cableBill';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 import { resolveRowDocTypeLabel, isPaymentRowType as isPaymentRow } from '../../utils/paymentDisplay';
 
@@ -74,9 +74,9 @@ const getSalesPersonName = (shop) => {
   return shop.salesPerson?.name || shop.salesPersonName || '';
 };
 
-const getScreenRowTypographyClassName = (ageDays, docNo) => {
+const getScreenRowTypographyClassName = (ageDays, docNo, description = '') => {
   const normalizedAge = Number(ageDays) || 0;
-  if (isAgedCableBill(docNo, normalizedAge)) {
+  if (isAgedCableBill(docNo, normalizedAge, description)) {
     return 'text-purple-900 font-bold dark:text-purple-400 dark:font-bold';
   }
   if (normalizedAge >= 60) {
@@ -96,6 +96,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('');
   const [olderThan60Days, setOlderThan60Days] = useState(false);
+  const [olderThan45Cable, setOlderThan45Cable] = useState(false);
   const [omniSearch, setOmniSearch] = useState('');
   const [showOmniSuggestions, setShowOmniSuggestions] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState(null);
@@ -111,7 +112,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   const [rowsPerPage, setRowsPerPage] = useState(15);
 
   // Reset all per-group pages when shop selection or rows-per-page changes
-  useEffect(() => { setCurrentPages({}); }, [startDate, endDate, selectedYear, selectedMonth, olderThan60Days, rowsPerPage]);
+  useEffect(() => { setCurrentPages({}); }, [startDate, endDate, selectedYear, selectedMonth, olderThan60Days, olderThan45Cable, rowsPerPage]);
 
   // Helper: get/set current page for a specific shop group
   const getGroupPage = (shopId) => currentPages[shopId] || 1;
@@ -278,14 +279,28 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
     });
   }, [reportRows, paymentMap]);
 
-  // Apply the 60-day age filter on top of already-consolidated data
+  // Apply the 60-day age filter or 45-day cable filter on top of already-consolidated data
   const ageAwareReportRows = useMemo(() => {
-    if (!olderThan60Days) return consolidatedReportRows;
+    if (!olderThan60Days && !olderThan45Cable) return consolidatedReportRows;
 
     return consolidatedReportRows
-      .filter((row) => computeElapsedDays(row?.date) >= 60)
+      .filter((row) => {
+        const elapsed = computeElapsedDays(row?.date);
+        const isCable = isCableBill(row?.docNo, row?.description);
+
+        if (olderThan60Days && olderThan45Cable) {
+          return elapsed >= 60 || (isCable && elapsed >= 45);
+        }
+        if (olderThan60Days) {
+          return elapsed >= 60;
+        }
+        if (olderThan45Cable) {
+          return isCable && elapsed >= 45;
+        }
+        return true;
+      })
       .filter((row) => toMoneyNumber(row.balanceDue) > 0);
-  }, [consolidatedReportRows, olderThan60Days]);
+  }, [consolidatedReportRows, olderThan60Days, olderThan45Cable]);
 
   const filteredReportRows = useMemo(() => {
     if (!selectedStoreId) return ageAwareReportRows;
@@ -455,6 +470,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
     setSelectedYear('');
     setSelectedMonth('');
     setOlderThan60Days(false);
+    setOlderThan45Cable(false);
     setOmniSearch('');
     setSelectedStoreId(null);
   };
@@ -540,14 +556,35 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       {/* Controls Bar */}
       <div className="no-print flex items-center justify-end">
         <div className="flex items-center gap-2 w-full lg:w-auto">
-          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
             <input
               type="checkbox"
               checked={olderThan60Days}
-              onChange={(event) => setOlderThan60Days(event.target.checked)}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setOlderThan60Days(checked);
+                if (checked) setOlderThan45Cable(false);
+              }}
               className="h-4 w-4 rounded border-gray-300 text-accent-600 focus:ring-accent-500"
             />
-            Age {'>'} 60 Days
+            <span className={olderThan60Days ? 'text-red-600 dark:text-red-400 font-bold' : ''}>
+              Age {'>'} 60 Days
+            </span>
+          </label>
+          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+            <input
+              type="checkbox"
+              checked={olderThan45Cable}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setOlderThan45Cable(checked);
+                if (checked) setOlderThan60Days(false);
+              }}
+              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className={olderThan45Cable ? 'text-purple-700 dark:text-purple-400 font-bold' : ''}>
+              45 Day Cable
+            </span>
           </label>
           <button
             onClick={() => setShowFilters(!showFilters)}
@@ -787,6 +824,9 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
         {olderThan60Days && (
           <div className="text-red-600 text-2xl font-bold mb-4">60 day Overdue</div>
         )}
+        {olderThan45Cable && (
+          <div className="text-purple-900 dark:text-purple-400 text-2xl font-bold mb-4">45 Day Cable Overdue</div>
+        )}
         {loadingReport ? (
           <div className="glass-card p-12 text-center">
             <div className="flex flex-col items-center gap-4">
@@ -959,7 +999,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                                   const isPaymentRowFlag = isPaymentRow(row);
                                   const rowTypographyClassName = isPaymentRowFlag
                                     ? 'text-black font-normal dark:text-slate-300 dark:font-normal'
-                                    : getScreenRowTypographyClassName(dynamicAgeDays, row.docNo);
+                                    : getScreenRowTypographyClassName(dynamicAgeDays, row.docNo, row.description);
                                   const receivedCellTypographyClassName = 'text-black font-bold dark:text-white dark:font-bold';
                                   const receivedDisplayText = displayReceived > 0
                                     ? `- ${formatCurrency(displayReceived)}`
@@ -1067,6 +1107,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
       <PrintFullReport
         isFullReport={true}
         olderThan60Days={olderThan60Days}
+        olderThan45Cable={olderThan45Cable}
         reportRowsOverride={filteredReportRows}
         marketOutstandingTotalOverride={sharedTotalMarketOutstanding}
       />
