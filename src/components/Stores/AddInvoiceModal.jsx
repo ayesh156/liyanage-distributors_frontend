@@ -526,7 +526,15 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
               )}
               {(shopProfile?.salesPerson || shopSalesPerson) && (
                 <p className="text-[10px] text-gray-400 mt-0.5">
-                  Default assigned: <span className="font-medium text-gray-500 dark:text-slate-300">{shopProfile?.salesPerson || shopSalesPerson}</span>
+                  Default assigned: <span className="font-medium text-gray-500 dark:text-slate-300">
+  {typeof shopProfile?.salesPerson === 'string'
+    ? shopProfile.salesPerson
+    : shopProfile?.salesPerson?.name || (
+        typeof shopSalesPerson === 'string'
+          ? shopSalesPerson
+          : shopSalesPerson?.name || ''
+      )}
+</span>
                 </p>
               )}
             </div>
