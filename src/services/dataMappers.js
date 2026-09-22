@@ -144,7 +144,9 @@ export function mapStoreFromApi(backendStore) {
         : backendStore?.route?.id != null
           ? Number(backendStore.route.id)
           : null,
-    route: backendStore?.route?.name || '',
+    route: typeof backendStore?.route === 'string'
+  ? backendStore.route
+  : (backendStore?.route?.name || backendStore?.routeName || 'Unassigned Route'),
     contact: backendStore.phone || '-',
     address: backendStore.address || '',
     salesPersonId:
@@ -410,6 +412,14 @@ export function mapOutstandingRowFromApi(row) {
     row.paymentMode ||
     ''
   );
+  // Extract route name safely from relational object or flat field
+  const resolvedRoute =
+    row.route?.name ||
+    row.store?.route?.name ||
+    (typeof row.route === 'string' ? row.route : '') ||
+    (typeof row.store?.route === 'string' ? row.store.route : '') ||
+    'Unassigned Route';
+
   return {
     id: row.id || null,
     invoiceId: row.invoiceId || (row.docType === 'Payment' || row.docType === 'Payment (Cash)' ? (row.invoice?.id || null) : null),
@@ -422,6 +432,12 @@ export function mapOutstandingRowFromApi(row) {
     ageDays: ageDays >= 0 ? ageDays : 0,
     shopId: row.storeId ? String(row.storeId) : null,
     shopName: row.shopName || row.store?.name || 'Unknown',
+    route: resolvedRoute, // 👈 Route name එක මෙතැනට inject කරන ලදී
+    store: {
+      id: row.storeId ? String(row.storeId) : null,
+      name: row.shopName || row.store?.name || 'Unknown',
+      route: resolvedRoute,
+    },
     description: row.description || '',
     chequeNo: row.chequeNo || '',
     bankName: row.bankName || '',

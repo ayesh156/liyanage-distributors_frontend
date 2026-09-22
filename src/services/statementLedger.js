@@ -52,6 +52,14 @@ const buildInvoiceRow = (transaction, now) => {
     transaction.branchName,
   );
 
+  // Extract route name safely from flat or relational transaction properties
+  const resolvedRoute =
+    transaction.route?.name ||
+    transaction.store?.route?.name ||
+    (typeof transaction.route === 'string' ? transaction.route : '') ||
+    (typeof transaction.store?.route === 'string' ? transaction.store.route : '') ||
+    'Unassigned Route';
+
   return {
     key: `invoice-${transaction.id || transaction.docNo || transaction.date}`,
     parentKey: transaction.id || transaction.docNo || transaction.date,
@@ -69,6 +77,15 @@ const buildInvoiceRow = (transaction, now) => {
     finalOutstanding: amount,
     ageDays,
     description: transaction.description || '',
+    // Preserve store and route metadata for grouping in Outstanding Report
+    shopId: transaction.shopId || transaction.storeId || null,
+    shopName: transaction.shopName || transaction.store?.name || 'Unknown',
+    route: resolvedRoute,
+    store: transaction.store || {
+      id: transaction.shopId || transaction.storeId || null,
+      name: transaction.shopName || transaction.store?.name || 'Unknown',
+      route: resolvedRoute,
+    },
   };
 };
 
