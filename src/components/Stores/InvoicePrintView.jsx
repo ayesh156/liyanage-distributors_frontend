@@ -129,7 +129,12 @@ const InvoicePrintView = forwardRef(({ shop, transaction }, ref) => {
           @page { margin: 8mm 10mm; size: A4 portrait; }
           body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-          /* Ensure white background and black text on every element */
+          /* Ensure responsive bounds, white background and black text on every element */
+          .erp-invoice-sheet {
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+          }
           .erp-invoice-sheet,
           .erp-invoice-sheet * {
             background: #ffffff !important;

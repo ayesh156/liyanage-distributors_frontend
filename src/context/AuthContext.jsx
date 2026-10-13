@@ -73,13 +73,22 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const updateUser = useCallback((updatedProfile) => {
+    setUser((prev) => {
+      const merged = { ...prev, ...updatedProfile };
+      sessionStorage.setItem('auth_user', JSON.stringify(merged));
+      return merged;
+    });
+  }, []);
+
   const value = useMemo(() => ({
     isAuthenticated,
     isInitializing,
     user,
     login,
     logout,
-  }), [isAuthenticated, isInitializing, user, login, logout]);
+    updateUser,
+  }), [isAuthenticated, isInitializing, user, login, logout, updateUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

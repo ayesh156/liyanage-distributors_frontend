@@ -10,6 +10,8 @@ import StoresManager from './components/Stores/StoresManager';
 import OutstandingReport from './components/Report/OutstandingReport';
 import RouteManager from './components/Routes/RouteManager';
 import SalesPersonManager from './components/SalesPersons/SalesPersonManager';
+import SettingsManager from './components/Settings/SettingsManager';
+import OfflineSentinel from './components/ui/OfflineSentinel';
 import { useAuth } from './context/AuthContext';
 import useAppStore from './hooks/useAppStore';
 import { setToastHandler } from './services/api';
@@ -175,6 +177,10 @@ function SalesPersonsView() {
   return <SalesPersonManager />;
 }
 
+function SettingsView() {
+  return <SettingsManager />;
+}
+
 export default function App() {
   const { isAuthenticated, isInitializing } = useAuth();
 
@@ -215,6 +221,9 @@ export default function App() {
         pauseOnHover
         theme="colored"
       />
+      {/* Network Resilience Layer: Zero-state-loss monitoring */}
+      <OfflineSentinel />
+
       {isAuthenticated ? (
         <HydrationGate>
           <Routes>
@@ -225,6 +234,8 @@ export default function App() {
               <Route path="sales-persons" element={<SalesPersonsView />} />
               <Route path="routes" element={<RoutesView />} />
               <Route path="full-report" element={<ReportView />} />
+              <Route path="settings" element={<SettingsView />} />
+              <Route path="settings/users" element={<SettingsView />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

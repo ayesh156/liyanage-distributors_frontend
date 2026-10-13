@@ -341,23 +341,32 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
   const submitLabel = isEditMode ? 'Update Invoice' : 'Add Invoice';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-gray-900/20 backdrop-blur-sm dark:bg-gray-900/40" />
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl max-h-[90vh] overflow-visible flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+      <div
+        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative w-full sm:max-w-lg md:max-w-2xl max-h-[92vh] sm:max-h-[85vh] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-t sm:border border-slate-200 dark:border-slate-700 rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col pb-safe">
 
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
             {shopName && <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">{shopName}</p>}
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-slate-800 transition-colors"
+            aria-label="Close modal"
+          >
             <X size={18} />
           </button>
         </div>
 
         <div className="overflow-y-auto flex-1 min-h-0">
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4">
             {/* Document No — editable text input + Cable Bill toggle */}
             <div>
               <label className="input-label">
@@ -547,11 +556,11 @@ export default function AddInvoiceModal({ isOpen, onClose, onSave, shopName, sho
                 className="input-field" />
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3 pt-2">
-              <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-              <button type="submit" className="btn-primary flex-1">
-                <FileText size={14} className="inline mr-1.5" /> {submitLabel}
+            {/* Actions Sticky Footer */}
+            <div className="sticky bottom-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 p-4 sm:p-5 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 z-10 shadow-lg sm:shadow-none pb-safe">
+              <button type="button" onClick={onClose} className="btn-secondary w-full sm:flex-1 py-2.5">Cancel</button>
+              <button type="submit" className="btn-primary w-full sm:flex-1 py-2.5">
+                <FileText size={16} className="inline mr-1.5" /> {submitLabel}
               </button>
             </div>
           </form>

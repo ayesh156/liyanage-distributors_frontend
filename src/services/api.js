@@ -50,7 +50,34 @@ function resolveTimeout(endpoint) {
 }
 
 /**
- * Generic fetch wrapper with error handling, timeout, JSON parsing.
+ * Determines whether a caught error represents a backend connection drop or network unreachable event.
+ * Matches:
+ *  - AbortController timeout (AbortError)
+ *  - TypeError (thrown natively by window.fetch on network drops, DNS failures, ERR_CONNECTION_REFUSED)
+ *  - Error messages containing standard network failure strings
+ *
+ * @param {unknown} error - The caught exception
+ * @returns {boolean} True if the error is a connection drop/network failure
+ */
+function isNetworkFailure(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return true;
+  if (error instanceof TypeError) return true;
+  const msg = String(error.message || '').toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('err_connection_refused') ||
+    msg.includes('connection refused') ||
+    msg.includes('net::err_') ||
+    msg.includes('network request failed') ||
+    msg.includes('network error') ||
+    msg.includes('network timeout')
+  );
+}
+
+/**
+ * Generic fetch wrapper with error handling, timeout, JSON parsing, and network resilience.
  */
 async function request(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
@@ -83,28 +110,54 @@ async function request(endpoint, options = {}) {
       return { success: true, data: null };
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = { error: `Server returned HTTP ${response.status}` };
+    }
 
     if (!response.ok) {
-      const errMsg = data.error || data.message || `Request failed with status ${response.status}`;
-      throw new ApiError(errMsg, response.status, data);
+      const isGatewayOffline = response.status === 502 || response.status === 503 || response.status === 504;
+      if (isGatewayOffline && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:network-offline'));
+      }
+      const errMsg = data?.error || data?.message || `Request failed with status ${response.status}`;
+      const apiError = new ApiError(errMsg, response.status, data);
+      if (!isGatewayOffline) {
+        showToast(errMsg);
+      }
+      throw apiError;
     }
 
     return data;
   } catch (error) {
+    const isOfflineDrop = isNetworkFailure(error);
+
+    // Immediately trigger central sentinel upon connection drops or timeouts
+    if (typeof window !== 'undefined' && isOfflineDrop) {
+      window.dispatchEvent(new Event('app:network-offline'));
+    }
+
     if (error.name === 'AbortError') {
       const timeoutSec = Math.round(timeoutMs / 1000);
       const msg = `Request to ${endpoint} timed out after ${timeoutSec}s`;
-      showToast(msg);
+      // Toast suppressed: authoritative OfflineSentinel notifies user
       throw new ApiError(msg, 408, null);
     }
+
     if (error instanceof ApiError) {
-      showToast(error.message);
       throw error;
     }
-    // Network / other errors
+
+    // Raw connection drops / ERR_CONNECTION_REFUSED / Failed to fetch
     const msg = error.message || `Network error connecting to ${endpoint}`;
-    showToast(msg);
+    // Suppress redundant toast banners when server is unreachable
+    if (!isOfflineDrop) {
+      showToast(msg);
+    }
+
+    // Gracefully reject the promise without unhandled UI runtime errors
     throw new ApiError(msg, 0, null);
   } finally {
     clearTimeout(timeout);
@@ -228,10 +281,43 @@ export const salesPersonsApi = {
 };
 
 /**
- * HEALTH
+ * HEALTH & RESILIENCE
  */
 export const healthApi = {
   check: () => api.get('/health'),
+  /**
+   * Lightweight ping with dedicated timeout that does NOT trigger error toasts.
+   * Used by OfflineSentinel to verify connection restoration.
+   */
+  ping: async (timeoutMs = 4000) => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const url = `${BASE_URL}/health`;
+      const res = await fetch(url, {
+        method: 'GET',
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      clearTimeout(timeout);
+      return res.ok;
+    } catch (_err) {
+      return false;
+    }
+  },
+};
+
+/**
+ * USERS & STAFF MANAGEMENT
+ */
+export const usersApi = {
+  getProfile:     ()              => api.get('/users/profile'),
+  updateProfile:  (data)          => api.put('/users/profile', data),
+  list:           ()              => api.get('/users'),
+  create:         (data)          => api.post('/users', data),
+  update:         (id, data)      => api.put(`/users/${id}`, data),
+  resetPassword:  (id, data)      => api.put(`/users/${id}/reset-password`, data),
+  delete:         (id)            => api.delete(`/users/${id}`),
 };
 
 /**

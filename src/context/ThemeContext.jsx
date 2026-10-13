@@ -1,24 +1,36 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 
-const STORAGE_KEY = 'liyanage-theme';
+const STORAGE_KEY = 'app-theme-mode';
+const LEGACY_STORAGE_KEY = 'liyanage-theme';
 
 /**
- * Resolve the effective theme from a stored preference value.
- * 'system' reads the browser's prefers-color-scheme media query.
+ * Checks whether the current operating system prefers dark mode.
+ * @returns {boolean}
  */
-function resolveTheme(stored) {
-  if (stored === 'dark')  return 'dark';
-  if (stored === 'light') return 'light';
-  // 'system' — honour browser preference
-  if (typeof window !== 'undefined') {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  return 'dark'; // safe server-side default
+function getSystemPrefersDark() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 /**
- * Apply the resolved theme class to <html>.
- * Only adds/removes 'dark' and 'light' — never mutates other classes.
+ * Resolve the effective theme from a preference value ('system', 'dark', 'light').
+ * When set to 'system', inspects system preference.
+ *
+ * @param {'system' | 'dark' | 'light'} mode
+ * @returns {'dark' | 'light'}
+ */
+function resolveTheme(mode) {
+  if (mode === 'dark') return 'dark';
+  if (mode === 'light') return 'light';
+  // 'system' — honour OS color scheme preference
+  return getSystemPrefersDark() ? 'dark' : 'light';
+}
+
+/**
+ * Apply the resolved theme class to <html> element.
+ * Enforces strict presence of .dark or .light class.
+ *
+ * @param {'dark' | 'light'} resolved
  */
 function applyThemeClass(resolved) {
   if (typeof document === 'undefined') return;
@@ -35,32 +47,51 @@ function applyThemeClass(resolved) {
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
+  // 1. Initial theme mode state: defaults to 'system'
   const [theme, setThemeState] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) || 'dark';
+      return (
+        localStorage.getItem(STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_STORAGE_KEY) ||
+        'system'
+      );
     } catch {
-      return 'dark';
+      return 'system';
     }
   });
 
-  // Resolved theme — actual 'dark' or 'light'
-  const resolved = useMemo(() => resolveTheme(theme), [theme]);
+  // Track system OS color preference dynamically
+  const [systemIsDark, setSystemIsDark] = useState(() => getSystemPrefersDark());
+
+  // Listen for real-time OS preference changes
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const handleChange = (e) => {
+      setSystemIsDark(e.matches);
+      // If currently set to 'system', immediately apply to DOM
+      if (theme === 'system') {
+        applyThemeClass(e.matches ? 'dark' : 'light');
+      }
+    };
+
+    mq.addEventListener('change', handleChange);
+    return () => mq.removeEventListener('change', handleChange);
+  }, [theme]);
+
+  // Resolved theme — either 'dark' or 'light'
+  const resolved = useMemo(() => {
+    if (theme === 'system') {
+      return systemIsDark ? 'dark' : 'light';
+    }
+    return theme === 'dark' ? 'dark' : 'light';
+  }, [theme, systemIsDark]);
 
   // Apply class on mount and whenever resolved theme changes
   useEffect(() => {
     applyThemeClass(resolved);
   }, [resolved]);
-
-  // Listen for system preference changes only when theme === 'system'
-  useEffect(() => {
-    if (theme !== 'system') return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => {
-      applyThemeClass(mq.matches ? 'dark' : 'light');
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [theme]);
 
   /**
    * PRINT PROTECTION

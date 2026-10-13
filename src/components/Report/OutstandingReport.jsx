@@ -557,11 +557,12 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
   const activeShopsCount = allShops.filter(s => s.active).length;
 
   return (
-    <div className="w-full min-w-full space-y-6">
-      {/* Controls Bar */}
-      <div className="no-print flex items-center justify-end">
-        <div className="flex items-center gap-2 w-full lg:w-auto">
-          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+    <div className="w-full max-w-full space-y-4 sm:space-y-6">
+      {/* Controls Bar — Fluid Responsive Wrapping */}
+      <div className="no-print flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full">
+        {/* Age Filter Badges */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <label className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl border border-gray-200 bg-white px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
             <input
               type="checkbox"
               checked={olderThan60Days}
@@ -573,13 +574,13 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                   setOlderThan45Cable(false);
                 }
               }}
-              className="h-4 w-4 rounded border-gray-300 text-accent-600 focus:ring-accent-500"
+              className="h-3.5 w-3.5 rounded border-gray-300 text-accent-600 focus:ring-accent-500"
             />
             <span className={olderThan60Days ? 'text-red-600 dark:text-red-400 font-bold' : ''}>
-              Age {'>'} 60 Days
+              Age {'>'} 60d
             </span>
           </label>
-          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+          <label className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl border border-gray-200 bg-white px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
             <input
               type="checkbox"
               checked={olderThan45Days}
@@ -591,13 +592,13 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                   setOlderThan45Cable(false);
                 }
               }}
-              className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+              className="h-3.5 w-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
             />
             <span className={olderThan45Days ? 'text-amber-600 dark:text-amber-400 font-bold' : ''}>
-              Age {'>'} 45 Days
+              Age {'>'} 45d
             </span>
           </label>
-          <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+          <label className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl border border-gray-200 bg-white px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
             <input
               type="checkbox"
               checked={olderThan45Cable}
@@ -609,26 +610,41 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                   setOlderThan45Days(false);
                 }
               }}
-              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              className="h-3.5 w-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
             />
             <span className={olderThan45Cable ? 'text-purple-700 dark:text-purple-400 font-bold' : ''}>
-              45 Day Cable
+              45d Cable
             </span>
           </label>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <button
+            type="button"
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium border rounded-xl shadow-sm bg-white text-gray-700 hover:bg-gray-50 border-gray-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/80 transition-all"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 text-xs font-semibold border rounded-xl shadow-sm bg-white text-gray-700 hover:bg-gray-50 border-gray-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/80 transition-all h-9"
           >
-            <SlidersHorizontal size={16} className={`transition-transform duration-300 ${showFilters ? 'rotate-180 text-orange-500' : ''}`} />
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
+            <SlidersHorizontal size={14} className={`transition-transform duration-300 ${showFilters ? 'rotate-180 text-orange-500' : ''}`} />
+            <span>{showFilters ? 'Hide' : 'Filters'}</span>
           </button>
-          <button onClick={handleExportCSV} className="btn-secondary text-xs flex-1 lg:flex-initial">
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 sm:py-2 h-9"
+            title="Export CSV"
+          >
             <FileSpreadsheet size={14} />
-            <span className="hidden sm:inline">CSV</span>
+            <span>CSV</span>
           </button>
-          <button onClick={handlePrint} className="btn-primary text-xs flex-1 lg:flex-initial">
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="btn-primary text-xs px-3 sm:px-4 py-1.5 sm:py-2 h-9 font-semibold shadow-sm"
+            title="Print or Save PDF"
+          >
             <Printer size={14} />
-            <span className="hidden sm:inline">Print / PDF</span>
+            <span>Print / PDF</span>
           </button>
         </div>
       </div>
@@ -918,7 +934,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                   <div key={group.shopId} className="glass-card overflow-hidden">
                     {/* Shop Header */}
                     <div
-                      className="flex items-center justify-between p-4 sm:px-5 sm:py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors dark:border-slate-700 dark:hover:bg-slate-700/30"
+                      className="flex items-center justify-between p-3 sm:px-5 sm:py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors dark:border-slate-700 dark:hover:bg-slate-700/30"
                       onClick={() => toggleBucket(group.shopId)}
                     >
                       <div className="flex items-center gap-3">
@@ -964,8 +980,8 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                     {/* Invoices Table */}
                     {isExpanded && (
                       <>
-                        <div className="px-5 pb-4">
-                          <div className="overflow-x-auto">
+                        <div className="px-2 sm:px-5 pb-4">
+                          <div className="overflow-x-auto w-full scrollbar-thin">
                             <table className="w-full table-auto">
                             <thead>
                               <tr className="table-header-row">

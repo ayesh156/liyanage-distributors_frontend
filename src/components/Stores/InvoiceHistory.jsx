@@ -178,78 +178,104 @@ export default function InvoiceHistory({
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="btn-ghost p-2 -ml-2">
+    <div className="space-y-4 sm:space-y-5">
+      {/* ── Responsive Header ───────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-4 min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={onBack}
+            className="btn-ghost p-2 -ml-1 sm:-ml-2 flex-shrink-0"
+            title="Back to Stores List"
+            aria-label="Back to Stores List"
+          >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">{shop?.name}</h2>
-            <p className="text-sm text-gray-500 dark:text-slate-400">
-              Route: <span className="text-accent-600 dark:text-accent-400">{shop?.route}</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-slate-100 truncate">
+              {shop?.name}
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 truncate mt-0.5">
+              Route: <span className="text-accent-600 dark:text-accent-400 font-medium">{shop?.route || 'No route'}</span>
               <span className="mx-2 text-gray-300 dark:text-slate-600">|</span>
-              {shop?.contact}
+              {shop?.contact || 'No contact'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Action button bar */}
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end flex-wrap pt-1 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-slate-800">
           {onEditShop && (
-            <button onClick={onEditShop} className="btn-ghost text-xs px-3 py-2">
-              <Edit3 size={13} /> Edit Shop
+            <button
+              type="button"
+              onClick={onEditShop}
+              className="btn-ghost text-xs px-2.5 py-2 h-10 sm:h-9"
+            >
+              <Edit3 size={13} />
+              <span className="hidden xs:inline">Edit Shop</span>
             </button>
           )}
           <button
-            onClick={() => !isHydrating && onPrintOutstanding(shop.id)}
+            type="button"
+            onClick={() => !isHydrating && onPrintOutstanding(shop?.id)}
             disabled={isHydrating}
-            className="btn-secondary text-xs disabled:opacity-50 disabled:cursor-not-allowed">
+            className="btn-secondary text-xs flex-1 sm:flex-initial h-10 sm:h-9 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <ArrowLeft size={14} className="rotate-90" /> Statement
           </button>
           <button
+            type="button"
             onClick={() => !isHydrating && onAddTransaction()}
             disabled={isHydrating}
-            className="btn-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed">
+            className="btn-primary text-xs flex-1 sm:flex-initial h-10 sm:h-9 font-semibold justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Plus size={14} /> Add Invoice
           </button>
         </div>
       </div>
 
-      {/* ── Summary Cards ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="glass-card p-4">
+      {/* ── Summary KPI Cards ───────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="glass-card p-3.5 sm:p-4">
           <p className="text-xs text-gray-500 mb-1 dark:text-slate-400">Total Invoiced</p>
-          <p className="text-lg font-bold text-gray-900 dark:text-slate-100">
+          <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-slate-100">
             {formatCurrency(transactions.reduce((s, t) => s + t.amount, 0))}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-slate-500 mt-1">{transactions.length} invoices</p>
         </div>
-        <div className="glass-card p-4">
+        <div className="glass-card p-3.5 sm:p-4">
           <p className="text-xs text-gray-500 mb-1 dark:text-slate-400">Total Collected</p>
-          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+          <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400">
             {formatCurrency(transactions.reduce((s, t) => s + (t.received || 0), 0))}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-slate-500 mt-1">
             {transactions.reduce((s, t) => s + (t.payments?.length || 0), 0)} payments
           </p>
         </div>
-        <div className="glass-card p-4 bg-gradient-to-br from-accent-50 to-accent-100/50 border-accent-200 dark:from-accent-900/20 dark:to-accent-800/10 dark:border-accent-700">
+        <div className="glass-card p-3.5 sm:p-4 bg-gradient-to-br from-accent-50 to-accent-100/50 border-accent-200 dark:from-accent-900/20 dark:to-accent-800/10 dark:border-accent-700">
           <p className="text-xs text-gray-500 mb-1 dark:text-slate-400">Outstanding Balance</p>
-          <p className={`text-lg font-bold ${outstanding > 0 ? 'text-accent-600 dark:text-accent-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+          <p className={`text-base sm:text-lg font-bold ${outstanding > 0 ? 'text-accent-600 dark:text-accent-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
             {outstanding > 0 ? formatCurrency(outstanding) : 'Rs. 0 — Cleared'}
           </p>
         </div>
       </div>
 
-      {/* ── Transactions Table ─────────────────────────────────── */}
+      {/* ── Transactions Section ────────────────────────────────── */}
       <div className="glass-card overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-slate-700">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-200">Transaction History</h3>
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <div className="relative">
-                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}
-                  className="input-field text-xs py-1.5 pr-7 appearance-none cursor-pointer">
+        {/* Toolbar */}
+        <div className="p-3 sm:p-5 border-b border-gray-200 dark:border-slate-700">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-200">
+              Transaction History
+            </h3>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Sort Order */}
+              <div className="relative flex-1 sm:flex-initial">
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value)}
+                  className="input-field text-xs py-1.5 pr-7 appearance-none cursor-pointer w-full"
+                >
                   <option value="newest">Newest First</option>
                   <option value="oldest">Oldest First</option>
                 </select>
@@ -257,17 +283,176 @@ export default function InvoiceHistory({
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </div>
-              <div className="relative">
+
+              {/* Search */}
+              <div className="relative flex-1 sm:w-48">
                 <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Doc no / desc..."
-                  value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                  className="input-field pl-8 text-xs py-1.5 w-40" />
+                <input
+                  type="text"
+                  placeholder="Doc no / desc..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="input-field pl-8 text-xs py-1.5 w-full"
+                />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* ── Mobile Responsive Card View (<640px) ───────────────── */}
+        <div className="block sm:hidden px-2 pt-2.5 pb-2 space-y-2.5">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-slate-900 dark:text-slate-100 text-sm">
+              {isHydrating ? (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 size={30} className="animate-spin text-accent-500" />
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Loading store details...</p>
+                </div>
+              ) : (
+                <>
+                  <Receipt size={30} className="mx-auto mb-2 text-gray-300 dark:text-slate-600" />
+                  No transactions found
+                </>
+              )}
+            </div>
+          ) : (
+            paginatedTransactions.map((t) => {
+              const balanceDue = computeBalanceDue(t.amount || 0, t.received || 0);
+              const elapsedDays = computeElapsedDays(t.date);
+
+              return (
+                <div
+                  key={t.id}
+                  className="p-3 rounded-2xl border border-gray-200/90 bg-white/90 dark:bg-slate-800/90 dark:border-slate-700/80 shadow-sm space-y-2 transition-all"
+                >
+                  {/* Top Bar: Doc No, Age Badge, Date */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className="font-mono text-xs font-bold text-gray-900 dark:text-slate-100 truncate">
+                        {normalizeInvoiceNo(t.docNo)}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium">
+                        Invoice
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${
+                        elapsedDays >= 60
+                          ? 'bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-400'
+                          : elapsedDays >= 45
+                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {elapsedDays}d
+                    </span>
+                  </div>
+
+                  {/* Date & Cheque Info */}
+                  <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                      <CalendarDays size={12} />
+                      <span>{formatDate(t.date)}</span>
+                    </div>
+                    {t.chequeNo && (
+                      <span className="font-mono text-[10px] text-gray-600 dark:text-slate-300 truncate max-w-[150px]">
+                        CHQ: {t.chequeNo}{t.bankName ? ` (${t.bankName})` : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {t.description && (
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 italic truncate">
+                      {t.description}
+                    </p>
+                  )}
+
+                  {/* Amounts Grid */}
+                  <div className="grid grid-cols-3 gap-1.5 p-2 rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-100 dark:border-slate-800 text-center">
+                    <div>
+                      <span className="text-[9px] text-gray-400 uppercase tracking-wider block">Total</span>
+                      <span className="font-mono text-xs font-semibold text-gray-900 dark:text-slate-100">
+                        {formatCurrency(t.amount)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-gray-400 uppercase tracking-wider block">Received</span>
+                      <span className="font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(t.received || 0)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-gray-400 uppercase tracking-wider block">Balance</span>
+                      <span
+                        className={`font-mono text-xs font-bold ${
+                          balanceDue > 0 ? 'text-accent-600 dark:text-accent-400' : 'text-emerald-600 dark:text-emerald-400'
+                        }`}
+                      >
+                        {formatCurrency(balanceDue)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-slate-700/60 gap-1">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onPrintReceipt(t)}
+                        className="p-1.5 rounded-lg bg-gray-100 hover:bg-emerald-50 text-gray-500 hover:text-emerald-600 dark:bg-slate-700/60 dark:hover:bg-emerald-900/30 dark:text-slate-300 dark:hover:text-emerald-400 transition-colors"
+                        title="Print Receipt"
+                        aria-label="Print receipt"
+                      >
+                        <Printer size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentHistoryTarget(t)}
+                        className="p-1.5 rounded-lg bg-gray-100 hover:bg-blue-50 text-gray-500 hover:text-blue-600 dark:bg-slate-700/60 dark:hover:bg-blue-900/30 dark:text-slate-300 dark:hover:text-blue-400 transition-colors"
+                        title="Payment History"
+                        aria-label="View payment history"
+                      >
+                        <Receipt size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(t)}
+                        className="p-1.5 rounded-lg bg-gray-100 hover:bg-indigo-50 text-gray-500 hover:text-indigo-600 dark:bg-slate-700/60 dark:hover:bg-indigo-900/30 dark:text-slate-300 dark:hover:text-indigo-400 transition-colors"
+                        title="Edit Invoice"
+                        aria-label="Edit invoice"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRequest(t)}
+                        className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500 dark:bg-slate-700/60 dark:hover:bg-red-900/30 dark:text-slate-300 dark:hover:text-red-400 transition-colors"
+                        title="Delete Invoice"
+                        aria-label="Delete invoice"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+
+                    {balanceDue > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => openInlinePayment(t)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
+                      >
+                        <DollarSign size={13} />
+                        <span>Collect</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ── Desktop & Tablet Table (sm:block) ──────────────────── */}
+        <div className="hidden sm:block overflow-x-auto w-full scrollbar-thin">
           <table className="w-full">
             <thead>
               <tr className="table-header-row">
@@ -303,11 +488,6 @@ export default function InvoiceHistory({
                 paginatedTransactions.map((t) => {
                   const balanceDue = computeBalanceDue(t.amount || 0, t.received || 0);
                   const elapsedDays = computeElapsedDays(t.date);
-                  // STRICT RULE (2026-08-10): Conditional Age Colors (Overdue
-                  // Red, Cable Bill Dark Purple) MUST ONLY apply to primary
-                  // INVOICE rows. Payment/Credit rows always render in the
-                  // standard neutral slate text so payment histories never
-                  // oscillate between Purple and Gray as age drops.
                   const isPaymentRowFlag = isPaymentRowType(t);
                   const rowTypographyClassName = isPaymentRowFlag
                     ? 'text-gray-700 font-normal dark:text-slate-400 dark:font-normal'
@@ -342,16 +522,18 @@ export default function InvoiceHistory({
                       </td>
                       <td className="table-cell text-center">
                         <div className="flex items-center justify-center gap-1">
-                          {/* Print Invoice */}
-                          <button onClick={() => onPrintReceipt(t)}
+                          <button
+                            type="button"
+                            onClick={() => onPrintReceipt(t)}
                             className="p-1.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-all dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
-                            title="Print Invoice">
+                            title="Print Invoice"
+                          >
                             <Printer size={13} />
                           </button>
 
-                          {/* Collect Payment — only if balanceDue > 0 */}
                           {balanceDue > 0 && (
                             <button
+                              type="button"
                               onClick={() => openInlinePayment(t)}
                               className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-all dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
                               title="Collect Payment"
@@ -360,8 +542,8 @@ export default function InvoiceHistory({
                             </button>
                           )}
 
-                          {/* View Payment History */}
                           <button
+                            type="button"
                             onClick={() => setPaymentHistoryTarget(t)}
                             className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-all dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
                             title="View Payment History"
@@ -369,12 +551,16 @@ export default function InvoiceHistory({
                             <Receipt size={13} />
                           </button>
 
-                          <button onClick={() => handleEdit(t)}
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(t)}
                             className="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-all dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-                            title="Edit">
+                            title="Edit"
+                          >
                             <Edit3 size={13} />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteRequest(t)}
                             className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all dark:hover:bg-red-900/20 dark:hover:text-red-400"
                             title="Delete"
@@ -403,23 +589,29 @@ export default function InvoiceHistory({
         )}
       </div>
 
-      {/* ── Inline Dynamic Payment Capture ────────────────────────── */}
+      {/* ── Inline Dynamic Payment Capture Modal (Mobile-Adaptive Sheet) ── */}
       {inlinePayment && (() => {
         const targetRow = transactions.find((t) => t.id === inlinePayment.id);
         const rowBalanceDue = targetRow ? computeBalanceDue(targetRow.amount || 0, targetRow.received || 0) : 0;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 backdrop-blur-sm p-4">
-            <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md shadow-xl">
-              <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-gray-900/40 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-t-3xl sm:rounded-2xl border-t sm:border border-slate-200 dark:border-slate-700 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] shadow-2xl flex flex-col pb-safe">
+              <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Quick Collect Payment</h3>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5 dark:text-slate-400">{normalizeInvoiceNo(targetRow?.docNo) || ''} — Balance Due: {formatCurrency(rowBalanceDue)}</p>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5 dark:text-slate-400">
+                    {normalizeInvoiceNo(targetRow?.docNo) || ''} — Due: {formatCurrency(rowBalanceDue)}
+                  </p>
                 </div>
-                <button onClick={closeInlinePayment} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-slate-700">
+                <button
+                  type="button"
+                  onClick={closeInlinePayment}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-slate-700"
+                >
                   <X size={18} />
                 </button>
               </div>
-              <form onSubmit={handleInlinePaymentSubmit} className="p-5 space-y-4">
+              <form onSubmit={handleInlinePaymentSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
                 <div>
                   <FancyDatePicker
                     value={inlinePayment.date}
@@ -435,43 +627,71 @@ export default function InvoiceHistory({
                 </div>
                 <div>
                   <label className="input-label">Amount (Rs.)</label>
-                  <input ref={payAmountRef} type="number" placeholder="0.00" min="1" step="0.01" onWheel={(e) => e.currentTarget.blur()}
+                  <input
+                    ref={payAmountRef}
+                    type="number"
+                    placeholder="0.00"
+                    min="1"
+                    step="0.01"
+                    onWheel={(e) => e.currentTarget.blur()}
                     value={inlinePayment.amount}
                     onChange={(e) => setInlinePayment((p) => ({ ...p, amount: e.target.value }))}
-                    className="input-field" required />
+                    className="input-field text-base sm:text-sm"
+                    required
+                  />
                 </div>
                 <div>
                   <label className="input-label">Description</label>
-                  <input type="text" placeholder="e.g., Over-the-counter payment"
+                  <input
+                    type="text"
+                    placeholder="e.g., Over-the-counter payment"
                     value={inlinePayment.description}
                     onChange={(e) => setInlinePayment((p) => ({ ...p, description: e.target.value }))}
-                    className="input-field" />
+                    className="input-field text-base sm:text-sm"
+                  />
                 </div>
                 {(inlinePaymentType === 'cheque' || inlinePaymentType === 'bank_slip') && (
-                  <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl space-y-3">
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl space-y-3">
                     <div>
                       <label className="input-label">{inlinePaymentType === 'bank_slip' ? 'Bank Slip No' : 'Cheque No'}</label>
-                      <input type="text" placeholder="e.g., CHQ-458401" className="input-field"
-                        value={inlinePayment.chequeNo || ''} onChange={(e) => setInlinePayment((p) => ({ ...p, chequeNo: e.target.value }))} />
+                      <input
+                        type="text"
+                        placeholder="e.g., CHQ-458401"
+                        className="input-field text-base sm:text-sm"
+                        value={inlinePayment.chequeNo || ''}
+                        onChange={(e) => setInlinePayment((p) => ({ ...p, chequeNo: e.target.value }))}
+                      />
                     </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <label className="input-label">Bank Name</label>
-                        <input type="text" placeholder="e.g., BOC" className="input-field"
-                          value={inlinePayment.bankName || ''} onChange={(e) => setInlinePayment((p) => ({ ...p, bankName: e.target.value }))} />
+                        <input
+                          type="text"
+                          placeholder="e.g., BOC"
+                          className="input-field text-base sm:text-sm"
+                          value={inlinePayment.bankName || ''}
+                          onChange={(e) => setInlinePayment((p) => ({ ...p, bankName: e.target.value }))}
+                        />
                       </div>
                       <div>
                         <label className="input-label">Branch Name</label>
-                        <input type="text" placeholder="e.g., Morawaka" className="input-field"
-                          value={inlinePayment.branchName || ''} onChange={(e) => setInlinePayment((p) => ({ ...p, branchName: e.target.value }))} />
+                        <input
+                          type="text"
+                          placeholder="e.g., Morawaka"
+                          className="input-field text-base sm:text-sm"
+                          value={inlinePayment.branchName || ''}
+                          onChange={(e) => setInlinePayment((p) => ({ ...p, branchName: e.target.value }))}
+                        />
                       </div>
                     </div>
                   </div>
                 )}
-                <div className="flex gap-3 pt-2">
-                  <button type="button" onClick={closeInlinePayment} className="btn-secondary flex-1">Cancel</button>
-                  <button type="submit" className="btn-primary flex-1">
-                    <DollarSign size={14} className="inline mr-1.5" /> Collect Payment
+                <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 sticky bottom-0 bg-white dark:bg-slate-900">
+                  <button type="button" onClick={closeInlinePayment} className="btn-secondary h-11 sm:h-10 w-full sm:flex-1">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary h-11 sm:h-10 w-full sm:flex-1 font-semibold">
+                    <DollarSign size={15} className="inline mr-1" /> Collect Payment
                   </button>
                 </div>
               </form>

@@ -279,7 +279,7 @@ export default function StoresManager({
 
   return (
     <>
-      <div className="screen-content w-full min-w-full px-5 print:hidden">
+      <div className="screen-content w-full max-w-full px-0 print:hidden">
 
         {/* ── Invoice History view — guards against hydration gap ──────── */}
         {viewMode === 'invoiceHistory' ? (

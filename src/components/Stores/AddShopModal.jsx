@@ -108,15 +108,19 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-gray-900/20 backdrop-blur-sm dark:bg-gray-900/40" />
-      <div className="relative w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-xl dark:bg-slate-800 dark:border-slate-700">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+      <div
+        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative w-full sm:max-w-lg max-h-[92vh] sm:max-h-[85vh] bg-white border-t sm:border border-gray-200 rounded-t-3xl sm:rounded-2xl shadow-2xl dark:bg-slate-800 dark:border-slate-700 flex flex-col pb-safe overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-slate-700">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-accent-100 flex items-center justify-center">
-              <Store size={16} className="text-accent-600" />
+            <div className="w-9 h-9 rounded-xl bg-accent-100 dark:bg-accent-900/40 flex items-center justify-center">
+              <Store size={16} className="text-accent-600 dark:text-accent-400" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100">
@@ -127,13 +131,17 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
               )}
             </div>
           </div>
-          <button onClick={onClose}
-            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-slate-700 transition-colors"
+            aria-label="Close modal"
+          >
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           {/* Shop Name */}
           <div>
             <label className="input-label">
@@ -254,11 +262,19 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
               className="input-field resize-none" rows={2} />
           </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose}
-              className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" className="btn-primary flex-1">
+          {/* Sticky Action buttons */}
+          <div className="sticky bottom-0 bg-white dark:bg-slate-800 pt-3 pb-1 border-t sm:border-t-0 border-gray-100 dark:border-slate-700/60 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-secondary h-11 sm:h-10 w-full sm:flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary h-11 sm:h-10 w-full sm:flex-1 font-semibold"
+            >
               {isEditing ? 'Save Changes' : 'Register Store'}
             </button>
           </div>

@@ -25,6 +25,8 @@ const InvoiceReceipt = forwardRef(({ shop, transaction, shopOutstanding }, ref) 
   return (
     <div ref={ref} className="receipt-print" style={{
       width: '80mm',
+      maxWidth: '100%',
+      boxSizing: 'border-box',
       background: 'white',
       color: '#000',
       fontFamily: "'Courier New', monospace",
@@ -36,8 +38,13 @@ const InvoiceReceipt = forwardRef(({ shop, transaction, shopOutstanding }, ref) 
       <style>{`
         @media print {
           @page { margin: 0; size: 80mm auto; }
-          body { margin: 0; padding: 0; }
-          .receipt-print { padding: 3mm; }
+          body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .receipt-print {
+            width: 80mm !important;
+            max-width: 100% !important;
+            padding: 3mm !important;
+            box-sizing: border-box !important;
+          }
         }
       `}</style>
 
