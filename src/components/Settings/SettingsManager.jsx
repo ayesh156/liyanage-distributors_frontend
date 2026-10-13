@@ -52,7 +52,7 @@ function getInitials(name, username) {
 function evaluatePasswordStrength(password) {
   if (!password) return { score: 0, label: '', color: 'bg-zinc-700' };
   let score = 0;
-  if (password.length >= 6) score += 1;
+  if (password.length >= 5) score += 1;
   if (password.length >= 10) score += 1;
   if (/[0-9]/.test(password)) score += 1;
   if (/[^A-Za-z0-9]/.test(password)) score += 1;
@@ -125,8 +125,8 @@ export default function SettingsManager() {
         toast.error('Current password is required to change password');
         return;
       }
-      if (profileForm.newPassword.length < 6) {
-        toast.error('New password must be at least 6 characters');
+      if (profileForm.newPassword.length < 5) {
+        toast.error('New password must be at least 5 characters');
         return;
       }
       if (profileForm.newPassword !== profileForm.confirmPassword) {
@@ -251,8 +251,8 @@ export default function SettingsManager() {
       toast.error('Username and password are required');
       return;
     }
-    if (createForm.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+    if (createForm.password.length < 5) {
+      toast.error('Password must be at least 5 characters');
       return;
     }
 
@@ -316,8 +316,8 @@ export default function SettingsManager() {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (!resetPasswordModal.user) return;
-    if (resetPasswordInput.length < 6) {
-      toast.error('Password must be at least 6 characters long');
+    if (resetPasswordInput.length < 5) {
+      toast.error('Password must be at least 5 characters long');
       return;
     }
 
@@ -523,7 +523,7 @@ export default function SettingsManager() {
                         type={showNewPassword ? 'text' : 'password'}
                         value={profileForm.newPassword}
                         onChange={(e) => setProfileForm({ ...profileForm, newPassword: e.target.value })}
-                        placeholder="Minimum 6 characters"
+                        placeholder="Minimum 5 characters"
                         className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
                       />
                       <button
@@ -996,7 +996,7 @@ export default function SettingsManager() {
                     required
                     value={createForm.password}
                     onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                    placeholder="Min 6 characters"
+                    placeholder="Min 5 characters"
                     className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-base sm:text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
@@ -1184,7 +1184,7 @@ export default function SettingsManager() {
 
             <form onSubmit={handleResetPassword} className="space-y-4 mt-4 overflow-y-auto flex-1 min-h-0 pr-0.5">
               <p className="text-xs text-gray-500 dark:text-slate-400">
-                Enter a new temporary or permanent password for this account. Minimum 6 characters.
+                Enter a new temporary or permanent password for this account. Minimum 5 characters.
               </p>
 
               <div>
