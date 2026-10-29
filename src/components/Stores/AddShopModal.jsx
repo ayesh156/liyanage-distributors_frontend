@@ -9,7 +9,7 @@ function emptyForm() {
   return { name: '', route: '', routeId: null, contact: '', address: '', salesPerson: '', salesPersonId: null, salesPersonBackendId: null };
 }
 
-export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop }) {
+export default function AddShopModal({ isOpen, onClose, onSave, routes = [], editShop }) {
   const [form, setForm] = useState(emptyForm());
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const shops = useAppStore((s) => s.shops || []);
@@ -21,7 +21,7 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
   const scoredStoreSuggestions = useMemo(() => {
     if (!normalizedNameQuery) return [];
 
-    const hardwareHints = ['hardware', 'hardwares', 'hardwares', 'electrical', 'electric', 'tools'];
+    const hardwareHints = ['hardware', 'hardwares', 'electrical', 'electric', 'tools'];
 
     const scoreStore = (store) => {
       const name = String(store?.name || '').trim().toLowerCase();
@@ -64,11 +64,22 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
           editShop.salesPersonName ||
           '';
 
+        const matchedRouteByString = typeof editShop.route === 'string'
+          ? (routes || []).find((r) => r.name?.toLowerCase() === editShop.route?.trim().toLowerCase())
+          : null;
+
+        const resolvedRouteId =
+          editShop.routeId != null
+            ? String(editShop.routeId)
+            : editShop.route?.id != null
+              ? String(editShop.route.id)
+              : (matchedRouteByString?.id != null ? String(matchedRouteByString.id) : null);
+
         setForm({
           name: editShop.name || '',
-          route: editShop.route || '',
-          routeId: editShop.routeId != null ? String(editShop.routeId) : null,
-          contact: editShop.contact || '',
+          route: typeof editShop.route === 'string' ? editShop.route : (editShop.route?.name || editShop.routeName || ''),
+          routeId: resolvedRouteId != null ? String(resolvedRouteId) : null,
+          contact: editShop.contact || editShop.phone || '',
           address: editShop.address || '',
           salesPerson: resolvedSalesPersonName,
           salesPersonId: defaultRepId ? String(defaultRepId) : null,
@@ -78,7 +89,7 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
         setForm(emptyForm());
       }
     }
-  }, [isOpen, editShop, salesPersons]);
+  }, [isOpen, editShop, salesPersons, routes]);
 
   useEffect(() => {
     if (!isOpen) setShowNameSuggestions(false);
@@ -101,7 +112,16 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
       return;
     }
 
-    onSave(isEditing ? { ...form, id: editShop.id } : form);
+    const parsedRouteId =
+      form.routeId != null && String(form.routeId).trim() !== ''
+        ? Number(form.routeId)
+        : null;
+
+    onSave(
+      isEditing
+        ? { ...form, routeId: parsedRouteId, id: editShop.id }
+        : { ...form, routeId: parsedRouteId }
+    );
     onClose();
   };
 
@@ -208,10 +228,10 @@ export default function AddShopModal({ isOpen, onClose, onSave, routes, editShop
             <RouteSearchSelect
               value={form.routeId}
               onSelect={(val) => {
-                const selectedRoute = routes.find((route) => String(route.id) === String(val));
+                const selectedRoute = (routes || []).find((route) => String(route.id) === String(val));
                 setForm((f) => ({
                   ...f,
-                  routeId: String(val || '').trim() || null,
+                  routeId: val != null && String(val).trim() !== '' ? String(val) : null,
                   route: selectedRoute?.name || '',
                 }));
               }}

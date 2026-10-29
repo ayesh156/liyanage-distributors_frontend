@@ -108,8 +108,8 @@ function hasChequeDetails(record = {}) {
 
 /**
  * Map a backend Store object to the frontend's expected store shape.
- * Backend Store: { id, name, address, route, phone, createdAt, updatedAt, _count?, totalPaid? }
- * Frontend expects: { id, name, route, contact, address, salesPerson, salesPersonPhone, totalPaid, totalPayments, active }
+ * Backend Store: { id, storeCode, name, address, routeId, route, phone, createdAt, updatedAt, _count?, totalPaid? }
+ * Frontend expects: { id, storeCode, name, routeId, route, routeObj, contact, address, salesPerson, salesPersonPhone, totalPaid, totalPayments, active }
  *
  * ══════════════════════════════════════════════════════════════════════════════
  * ID SAFETY NOTE: Store.id in Prisma is String @id @default(uuid()).
@@ -134,20 +134,37 @@ export function mapStoreFromApi(backendStore) {
       }))
     : [];
 
+  // Extract nested route relation safely
+  const routeObj =
+    backendStore?.route && typeof backendStore.route === 'object'
+      ? {
+          id: Number(backendStore.route.id),
+          name: backendStore.route.name || '',
+          routeCode: backendStore.route.routeCode || '',
+        }
+      : null;
+
+  const resolvedRouteId =
+    backendStore?.routeId != null
+      ? Number(backendStore.routeId)
+      : (routeObj?.id != null ? Number(routeObj.id) : null);
+
+  const resolvedRouteName =
+    routeObj?.name ||
+    (typeof backendStore?.route === 'string' && backendStore.route.trim() !== '' ? backendStore.route.trim() : null) ||
+    backendStore?.routeName ||
+    'Unassigned Route';
+
   return {
     id: backendStore?.id ? String(backendStore.id) : null,
     storeCode: backendStore?.storeCode ? String(backendStore.storeCode) : '',
     name: backendStore.name,
-    routeId:
-      backendStore?.routeId != null
-        ? Number(backendStore.routeId)
-        : backendStore?.route?.id != null
-          ? Number(backendStore.route.id)
-          : null,
-    route: typeof backendStore?.route === 'string'
-  ? backendStore.route
-  : (backendStore?.route?.name || backendStore?.routeName || 'Unassigned Route'),
+    routeId: resolvedRouteId,
+    route: resolvedRouteName,
+    routeObj,
+    routeName: resolvedRouteName,
     contact: backendStore.phone || '-',
+    phone: backendStore.phone || '',
     address: backendStore.address || '',
     salesPersonId:
       (backendStore?.salesPersonId ? String(backendStore.salesPersonId) : null) ||
@@ -358,13 +375,20 @@ export function mapPaymentToApi(paymentData) {
 
 /**
  * Map frontend store data to backend create/update payload.
+ * Ensures routeId is explicitly formatted as integer/number for relational mapping.
  */
 export function mapStoreToApi(storeData) {
+  const parsedRouteId =
+    storeData.routeId != null && String(storeData.routeId).trim() !== ''
+      ? Number(storeData.routeId)
+      : (storeData.routeObj?.id != null ? Number(storeData.routeObj.id) : null);
+
   return {
     name: storeData.name,
     address: storeData.address || '',
-    routeId: storeData.routeId ? Number(storeData.routeId) : null,
-    phone: storeData.contact || '',
+    routeId: Number.isFinite(parsedRouteId) ? parsedRouteId : null,
+    route: typeof storeData.route === 'string' ? storeData.route : (storeData.route?.name || ''),
+    phone: storeData.contact || storeData.phone || '',
     salesPersonId: String(storeData.salesPersonBackendId || storeData.salesPersonId || '').trim() || null,
   };
 }
@@ -432,7 +456,7 @@ export function mapOutstandingRowFromApi(row) {
     ageDays: ageDays >= 0 ? ageDays : 0,
     shopId: row.storeId ? String(row.storeId) : null,
     shopName: row.shopName || row.store?.name || 'Unknown',
-    route: resolvedRoute, // 👈 Route name එක මෙතැනට inject කරන ලදී
+    route: resolvedRoute,
     store: {
       id: row.storeId ? String(row.storeId) : null,
       name: row.shopName || row.store?.name || 'Unknown',

@@ -26,21 +26,32 @@ export default function HardwareStoresTable({
   // Reset to page 1 whenever filters or rows-per-page change
   useEffect(() => { setCurrentPage(1); }, [searchQuery, routeFilter, rowsPerPage]);
 
+  /**
+   * Derive route filter options with dynamic count aggregations.
+   * Compares store.routeId or store.route?.id against route.id to eliminate
+   * legacy string-matching discrepancies.
+   */
   const routeOptions = useMemo(() => [
     { value: 'all', label: 'All Routes' },
     ...routes.map((r) => ({
       value: String(r.id),
       label: r.name,
-      count: shops.filter((s) => String(s.routeId) === String(r.id)).length,
+      count: shops.filter((s) => {
+        const sRouteId = s.routeId != null ? s.routeId : (s.route?.id != null ? s.route.id : null);
+        return sRouteId != null && String(sRouteId) === String(r.id);
+      }).length,
     })),
   ], [routes, shops]);
 
   const filtered = useMemo(() => {
     let result = shops;
 
-    // 1. Route Filter
+    // 1. Relational Route Filter (matches store.routeId or store.route?.id)
     if (routeFilter !== 'all') {
-      result = result.filter((s) => String(s.routeId) === String(routeFilter));
+      result = result.filter((s) => {
+        const sRouteId = s.routeId != null ? s.routeId : (s.route?.id != null ? s.route.id : null);
+        return sRouteId != null && String(sRouteId) === String(routeFilter);
+      });
     }
 
     // 2. Ultra-Smart Flexible Search Filter
@@ -191,6 +202,7 @@ export default function HardwareStoresTable({
               const outstanding = shopOutstanding[shop.id] || 0;
               const totalPaid = Number(shop.totalPaid ?? shop.totalPayments ?? 0);
               const displayStoreCode = shop.storeCode || `STR-LEGACY-${String(shop.id || '').slice(0, 8)}`;
+              const routeDisplayName = typeof shop.route === 'string' ? shop.route : (shop.route?.name || shop.routeName || 'No route assigned');
 
               return (
                 <div
@@ -205,7 +217,7 @@ export default function HardwareStoresTable({
                           {displayStoreCode}
                         </span>
                         <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 truncate max-w-[140px]">
-                          {shop.route || 'No route assigned'}
+                          {routeDisplayName}
                         </span>
                       </div>
                       <button
@@ -336,6 +348,7 @@ export default function HardwareStoresTable({
                   const outstanding = shopOutstanding[shop.id] || 0;
                   const totalPaid = Number(shop.totalPaid ?? shop.totalPayments ?? 0);
                   const displayStoreCode = shop.storeCode || `STR-LEGACY-${String(shop.id || '').slice(0, 8)}`;
+                  const routeDisplayName = typeof shop.route === 'string' ? shop.route : (shop.route?.name || shop.routeName || 'No route assigned');
                   return (
                     <tr key={shop.id} className="group table-body-row">
                       <td className="table-cell font-mono text-xs text-gray-400 dark:text-slate-500">
@@ -357,7 +370,7 @@ export default function HardwareStoresTable({
                       </td>
                       <td className="table-cell">
                         <span className="inline-flex max-w-full items-center rounded-md border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                          <span className="truncate">{shop.route || 'No route assigned'}</span>
+                          <span className="truncate">{routeDisplayName}</span>
                         </span>
                       </td>
                       <td className="table-cell">

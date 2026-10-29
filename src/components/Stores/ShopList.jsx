@@ -1,5 +1,6 @@
 import { Search, Plus, Store, MapPin, Phone, ChevronRight, Filter } from 'lucide-react';
 import { useState } from 'react';
+import useAppStore from '../../hooks/useAppStore';
 
 const formatCurrency = (val) => val.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
@@ -12,18 +13,28 @@ export default function ShopList({
   setSearchQuery,
   allShops,
 }) {
+  const routes = useAppStore((s) => s.routes || []);
   const [routeFilter, setRouteFilter] = useState('all');
-  const routes = [...new Set(allShops.map(s => s.route))];
 
   const filtered = routeFilter === 'all'
     ? shops
-    : shops.filter(s => s.route === routeFilter);
+    : shops.filter((s) => {
+        const sRouteId = s.routeId != null ? s.routeId : (s.route?.id != null ? s.route.id : null);
+        return (
+          (sRouteId != null && String(sRouteId) === String(routeFilter)) ||
+          (typeof s.route === 'string' && s.route === routeFilter) ||
+          (s.route?.name && s.route.name === routeFilter)
+        );
+      });
 
   const searched = searchQuery
-    ? filtered.filter(s =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.route.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? filtered.filter((s) => {
+        const routeName = typeof s.route === 'string' ? s.route : (s.route?.name || s.routeName || '');
+        return (
+          (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          routeName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      })
     : filtered;
 
   return (
@@ -49,7 +60,11 @@ export default function ShopList({
                 className="input-field pr-8 appearance-none cursor-pointer"
               >
                 <option value="all">All Routes</option>
-                {routes.map(r => <option key={r} value={r}>{r}</option>)}
+                {routes.map((r) => (
+                  <option key={r.id} value={String(r.id)}>
+                    {r.name}
+                  </option>
+                ))}
               </select>
               <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -65,6 +80,8 @@ export default function ShopList({
       <div className="divide-y divide-gray-100">
         {searched.map((shop) => {
           const outstanding = shopOutstanding[shop.id] || 0;
+          const routeDisplayName = typeof shop.route === 'string' ? shop.route : (shop.route?.name || shop.routeName || 'No route assigned');
+
           return (
             <button
               key={shop.id}
@@ -86,7 +103,7 @@ export default function ShopList({
                 <div className="flex items-center gap-4 mt-0.5">
                   <span className="flex items-center gap-1 text-xs text-gray-500">
                     <MapPin size={11} />
-                    {shop.route}
+                    {routeDisplayName}
                   </span>
                   <span className="flex items-center gap-1 text-xs text-gray-500">
                     <Phone size={11} />
