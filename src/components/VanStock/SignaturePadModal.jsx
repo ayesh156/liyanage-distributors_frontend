@@ -26,6 +26,7 @@ export default function SignaturePadModal({
   manifestNo = 'MAN-20261105-01',
   uncheckedCount = 0,
   totalCount = 0,
+  verifiedCount,
 }) {
   const canvasRef = useRef(null);
   const isDrawingRef = useRef(false);
@@ -33,6 +34,9 @@ export default function SignaturePadModal({
   const [hasDrawn, setHasDrawn] = useState(false);
   const [signerName, setSignerName] = useState(defaultSignerName);
   const [signDate, setSignDate] = useState('');
+
+  // Calculate verified items count; if verifiedCount is passed use it, otherwise derive from totalCount - uncheckedCount
+  const checkedCount = typeof verifiedCount === 'number' ? verifiedCount : Math.max(0, totalCount - uncheckedCount);
 
   // Set local timestamp
   useEffect(() => {
@@ -241,6 +245,12 @@ export default function SignaturePadModal({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Minimum 1 verified item validation
+    if (checkedCount === 0) {
+      toast.warning('Please verify at least 1 item to proceed.');
+      return;
+    }
+
     // Export signature as clean PNG data URL
     const signatureDataUrl = canvas.toDataURL('image/png');
 
@@ -308,18 +318,19 @@ export default function SignaturePadModal({
 
         {/* Modal Body */}
         <div className="p-5 overflow-y-auto space-y-4">
-          {/* Signer Identity Input */}
+          {/* Signer Identity Input (Locked - Read-Only for Assigned Sales Representative) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Representative Signer Full Name <span className="text-red-500">*</span>
+                Representative Signer Full Name <span className="text-slate-400 font-normal text-[10px]">(Assigned Rep — Locked)</span>
               </label>
               <input
                 type="text"
                 value={signerName}
-                onChange={(e) => setSignerName(e.target.value)}
+                readOnly={true}
+                disabled={true}
                 placeholder="e.g. Kamal Perera"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium cursor-not-allowed select-none focus:outline-none"
               />
             </div>
 
@@ -381,7 +392,12 @@ export default function SignaturePadModal({
           </div>
 
           {/* Verification Status Feedback Banner with High-Contrast Dark Mode Styling */}
-          {uncheckedCount > 0 ? (
+          {checkedCount === 0 ? (
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-400 border border-amber-300 dark:border-amber-500 text-[11px] text-amber-900 dark:text-amber-950 font-semibold leading-relaxed flex items-center gap-2.5 shadow-sm">
+              <AlertCircle size={16} className="text-amber-700 dark:text-amber-950 flex-shrink-0" />
+              <span>Please verify at least 1 item to proceed.</span>
+            </div>
+          ) : uncheckedCount > 0 ? (
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-400 border border-amber-300 dark:border-amber-500 text-[11px] text-amber-900 dark:text-amber-950 leading-relaxed flex items-start gap-2.5 shadow-sm">
               <AlertCircle size={16} className="text-amber-700 dark:text-amber-950 flex-shrink-0 mt-0.5" />
               <div>
@@ -426,7 +442,8 @@ export default function SignaturePadModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={!hasDrawn}
+            disabled={!hasDrawn || checkedCount === 0}
+            title={checkedCount === 0 ? 'Please verify at least 1 item to proceed.' : undefined}
             className={`flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-xl text-white shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer ${
               uncheckedCount > 0
                 ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'

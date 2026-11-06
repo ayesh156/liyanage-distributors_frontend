@@ -1583,8 +1583,14 @@ export const useVanStockStore = create((set, get) => ({
   /**
    * Action: Submit Rep Verification with Signature
    * Supports target manifest revision code (e.g. MAN-YYYYMMDD-01-R4)
+   * skipApi: when true, skips remote network call (used when caller handles API call directly to prevent duplicate requests)
    */
-  submitRepVerificationWithSignature: async ({ signatureData, repName, manifestNo: targetManifestNo }) => {
+  submitRepVerificationWithSignature: async ({
+    signatureData,
+    repName,
+    manifestNo: targetManifestNo,
+    skipApi = false,
+  }) => {
     const { dailyManifest, vanStock } = get();
     const nowIso = new Date().toISOString();
     const signer = repName || dailyManifest.repName || 'Kamal Perera';
@@ -1656,25 +1662,27 @@ export const useVanStockStore = create((set, get) => ({
     });
     persistState(get());
 
-    try {
-      await vanStockApi.signPublicManifest(effectiveManifestNo, {
-        signatureData,
-        repSignature: signatureData,
-        signature: signatureData,
-        repName: signer,
-        items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
-      });
-    } catch (err) {
+    if (!skipApi) {
       try {
-        await vanStockApi.verifyPublicManifest(effectiveManifestNo, {
+        await vanStockApi.signPublicManifest(effectiveManifestNo, {
           signatureData,
           repSignature: signatureData,
           signature: signatureData,
           repName: signer,
           items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
         });
-      } catch (innerErr) {
-        console.warn('Backend signature verification sync error:', innerErr);
+      } catch (err) {
+        try {
+          await vanStockApi.verifyPublicManifest(effectiveManifestNo, {
+            signatureData,
+            repSignature: signatureData,
+            signature: signatureData,
+            repName: signer,
+            items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
+          });
+        } catch (innerErr) {
+          console.warn('Backend signature verification sync error:', innerErr);
+        }
       }
     }
 

@@ -7,7 +7,7 @@
  * and WCAG-compliant high-contrast Dark & Light mode tokens.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Truck,
@@ -58,6 +58,7 @@ export default function VanStockShareView() {
   const [isLoading, setIsLoading] = useState(Boolean(targetCode));
 
   // Live public manifest hydration for WhatsApp zero-login links
+  // Strictly isolated to targetCode dependency to prevent store-update re-fetch cascades
   useEffect(() => {
     let isMounted = true;
     if (targetCode) {
@@ -73,7 +74,8 @@ export default function VanStockShareView() {
             setFetchError(false);
           } else {
             // Check local store fallback before declaring missing manifest
-            const localFallback = getManifestByCode ? getManifestByCode(targetCode) : null;
+            const { getManifestByCode: lookupFn } = useVanStockStore.getState();
+            const localFallback = lookupFn ? lookupFn(targetCode) : null;
             if (!localFallback) {
               setFetchError(true);
               setErrorMessage('Manifest Not Found or Link Invalid. Please verify the link with your warehouse dispatcher.');
@@ -85,8 +87,9 @@ export default function VanStockShareView() {
           console.warn('[VanStockShareView] Failed to fetch manifest:', err);
 
           // Check if local store has this exact manifest before declaring failure
-          const localFallback = getManifestByCode ? getManifestByCode(targetCode) : null;
-          const foundInHistory = manifestHistory.find(
+          const { getManifestByCode: lookupFn, manifestHistory: historyList } = useVanStockStore.getState();
+          const localFallback = lookupFn ? lookupFn(targetCode) : null;
+          const foundInHistory = (historyList || []).find(
             (m) => m.manifestNo === targetCode || m.id === targetCode
           );
 
@@ -111,7 +114,7 @@ export default function VanStockShareView() {
     return () => {
       isMounted = false;
     };
-  }, [targetCode, getManifestByCode, manifestHistory]);
+  }, [targetCode]);
 
   // Determine active manifest based on remote response or route/query parameters
   const matchedManifest = useMemo(() => {
@@ -274,9 +277,20 @@ export default function VanStockShareView() {
     DEFAULT_OWNER_SIGNATURE;
 
   const repSignature =
+    activeManifest?.repSignature ||
     activeManifest?.repSignatureData ||
+    remoteManifest?.repSignature ||
+    remoteManifest?.repSignatureData ||
+    dailyManifest?.repSignature ||
     dailyManifest?.repSignatureData ||
     null;
+
+  const hasExistingRepSignature = Boolean(
+    repSignature && typeof repSignature === 'string' && repSignature.trim().length > 50
+  );
+
+  const isSubmittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const repSignerName =
     activeManifest?.repSignedBy ||
@@ -291,72 +305,126 @@ export default function VanStockShareView() {
     null;
 
   const handleAttachSignature = async ({ signatureData, signerName }) => {
+    if (isSubmittingRef.current) return;
+
     if (isHistorical) {
       toast.info(`Manifest ${activeManifest?.manifestNo} is an archived historical record.`);
       return;
     }
 
+    // Minimum 1 verified item validation
+    if (verifiedCount === 0) {
+      toast.warning('Please verify at least 1 item to proceed.');
+      return;
+    }
+
     // Validate signature data URL length before allowing API submission
-    if (!signatureData || typeof signatureData !== 'string' || signatureData.trim().length < 500) {
+    if (!signatureData || typeof signatureData !== 'string' || signatureData.trim().length < 50) {
       toast.warning('Please provide a valid signature.');
       return;
     }
+
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     const manifestCode = activeManifest?.manifestNo || targetCode;
     const itemsSnapshot = activeVanItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) }));
     const unchecked = activeVanItems.filter((item) => !item.repChecked).length;
 
-    if (manifestCode) {
-      try {
-        await vanStockApi.signPublicManifest(manifestCode, {
-          signatureData,
-          repSignature: signatureData,
-          signature: signatureData,
-          repName: signerName,
-          items: itemsSnapshot,
-        });
-      } catch (err) {
-        console.warn('signPublicManifest fallback to verifyPublicManifest:', err);
+    try {
+      let updatedRemoteData = null;
+
+      if (manifestCode) {
         try {
-          await vanStockApi.verifyPublicManifest(manifestCode, {
+          const response = await vanStockApi.signPublicManifest(manifestCode, {
             signatureData,
             repSignature: signatureData,
             signature: signatureData,
             repName: signerName,
             items: itemsSnapshot,
           });
-        } catch (innerErr) {
-          console.warn('Public manifest remote verification error:', innerErr);
+          updatedRemoteData = response?.data?.manifest || response?.data;
+        } catch (err) {
+          console.warn('signPublicManifest fallback to verifyPublicManifest:', err);
+          try {
+            const verifyRes = await vanStockApi.verifyPublicManifest(manifestCode, {
+              signatureData,
+              repSignature: signatureData,
+              signature: signatureData,
+              repName: signerName,
+              items: itemsSnapshot,
+            });
+            updatedRemoteData = verifyRes?.data?.manifest || verifyRes?.data;
+          } catch (innerErr) {
+            console.warn('Public manifest remote verification error:', innerErr);
+          }
         }
       }
+
+      // Synchronize local zustand store without firing duplicate API call
+      try {
+        await submitRepVerificationWithSignature({
+          signatureData,
+          repName: signerName,
+          manifestNo: manifestCode,
+          skipApi: true,
+        });
+      } catch (storeErr) {
+        console.warn('Store state sync non-critical warning:', storeErr);
+      }
+
+      // Update remoteManifest state immediately so the rep's signature renders live without reload
+      setRemoteManifest((prev) => {
+        const base = updatedRemoteData || prev || {};
+        return {
+          ...base,
+          repSignatureData: signatureData,
+          repSignature: signatureData,
+          repSignedBy: signerName,
+          repSignedAt: new Date().toISOString(),
+          status: unchecked === 0 ? 'REP_ACCEPTED' : 'PARTIAL_DISCREPANCY',
+          uncheckedCount: unchecked,
+        };
+      });
+
+      if (unchecked === 0) {
+        toast.success('Manifest successfully signed and fully verified.');
+      } else {
+        toast.warning(`Manifest signed with ${unchecked} unchecked item(s) flagged as discrepancy.`);
+      }
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * Direct Verification Submission
+   * Bypasses SignaturePadModal when a valid rep signature is already on file.
+   * Directly persists current checked items snapshot to backend and synchronizes store.
+   */
+  const handleDirectSubmitVerification = async () => {
+    if (isSubmittingRef.current) return;
+
+    if (isHistorical) {
+      toast.info(`Manifest ${activeManifest?.manifestNo} is an archived historical record.`);
+      return;
     }
 
-    await submitRepVerificationWithSignature({
-      signatureData,
-      repName: signerName,
-      manifestNo: manifestCode,
+    if (verifiedCount === 0) {
+      toast.warning('Please verify at least 1 item to proceed.');
+      return;
+    }
+
+    if (!hasExistingRepSignature) {
+      setIsSignatureModalOpen(true);
+      return;
+    }
+
+    await handleAttachSignature({
+      signatureData: repSignature,
+      signerName: repSignerName,
     });
-
-    // Update remoteManifest state immediately so the rep's signature renders live without reload
-    setRemoteManifest((prev) =>
-      prev
-        ? {
-            ...prev,
-            repSignatureData: signatureData,
-            repSignature: signatureData,
-            repSignedBy: signerName,
-            repSignedAt: new Date().toISOString(),
-            status: unchecked === 0 ? 'REP_ACCEPTED' : 'PARTIAL_DISCREPANCY',
-            uncheckedCount: unchecked,
-          }
-        : prev
-    );
-
-    if (unchecked === 0) {
-      toast.success('Manifest successfully signed and fully verified.');
-    } else {
-      toast.warning(`Manifest signed with ${unchecked} unchecked item(s) flagged as discrepancy.`);
-    }
   };
 
   const handleToggleCheck = (itemId) => {
@@ -577,22 +645,67 @@ export default function VanStockShareView() {
                 ? `Historical manifest record for ${displayDate} (${activeVanItems.length} SKUs recorded)`
                 : `Verified ${verifiedCount} of ${activeVanItems.length} SKUs on board ${vehicle.id}`}
             </p>
+            {!isHistorical && verifiedCount === 0 && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1 mt-1">
+                <AlertCircle size={12} />
+                <span>Please verify at least 1 item to proceed.</span>
+              </p>
+            )}
           </div>
           {!isHistorical ? (
-            <button
-              type="button"
-              onClick={() => setIsSignatureModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow transition-all active:scale-95 cursor-pointer flex-shrink-0"
-            >
-              <PenTool size={13} />
-              <span>
-                {activeManifest?.repSignatureData || dailyManifest?.repSignatureData
-                  ? 'Update Signature'
-                  : uncheckedCount > 0
-                  ? `Sign Manifest (${verifiedCount}/${activeVanItems.length})`
-                  : 'Sign Manifest'}
-              </span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+              {hasExistingRepSignature ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={verifiedCount === 0 || isSubmitting}
+                    onClick={handleDirectSubmitVerification}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow transition-all active:scale-95 cursor-pointer"
+                    title={verifiedCount === 0 ? 'Please verify at least 1 item to proceed.' : 'Submit verification with existing signature'}
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>{isSubmitting ? 'Submitting...' : 'Submit Verification'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      if (verifiedCount === 0) {
+                        toast.warning('Please verify at least 1 item to proceed.');
+                        return;
+                      }
+                      setIsSignatureModalOpen(true);
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                    title="Re-draw handwritten signature"
+                  >
+                    <PenTool size={12} />
+                    <span>Re-draw Signature</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={verifiedCount === 0 || isSubmitting}
+                  onClick={() => {
+                    if (verifiedCount === 0) {
+                      toast.warning('Please verify at least 1 item to proceed.');
+                      return;
+                    }
+                    setIsSignatureModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow transition-all active:scale-95 cursor-pointer"
+                  title={verifiedCount === 0 ? 'Please verify at least 1 item to proceed.' : 'Sign manifest'}
+                >
+                  <PenTool size={13} />
+                  <span>
+                    {uncheckedCount > 0
+                      ? `Sign Manifest (${verifiedCount}/${activeVanItems.length})`
+                      : 'Sign Manifest'}
+                  </span>
+                </button>
+              )}
+            </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-400 text-amber-950 dark:text-amber-950 border border-amber-300 dark:border-amber-500 text-xs font-bold shadow-sm">
               <ShieldCheck size={14} className="text-amber-800 dark:text-amber-900" />
@@ -756,7 +869,13 @@ export default function VanStockShareView() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setIsSignatureModalOpen(true)}
+                    onClick={() => {
+                      if (verifiedCount === 0) {
+                        toast.warning('Please verify at least 1 item to proceed.');
+                        return;
+                      }
+                      setIsSignatureModalOpen(true);
+                    }}
                     className="text-xs font-bold text-accent-700 hover:underline cursor-pointer flex items-center gap-1"
                   >
                     <PenTool size={12} />
@@ -795,6 +914,7 @@ export default function VanStockShareView() {
         manifestNo={activeManifest?.manifestNo || dailyManifest?.manifestNo || 'MAN-20261105-01'}
         uncheckedCount={uncheckedCount}
         totalCount={activeVanItems.length}
+        verifiedCount={verifiedCount}
       />
     </div>
   );
