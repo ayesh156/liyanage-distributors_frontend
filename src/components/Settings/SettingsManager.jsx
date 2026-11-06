@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   User,
@@ -24,10 +24,16 @@ import {
   Users,
   Calendar,
   Sparkles,
+  Truck,
+  Upload,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
 import { usersApi } from '../../services/api';
+import useVanStockStore from '../../hooks/useVanStockStore';
+import { compressImageToDataUrl } from '../../utils/imageCompression';
+import SearchableSelect from '../ui/SearchableSelect';
 
 /**
  * Computes uppercase user initials from name or username.
@@ -67,10 +73,128 @@ function evaluatePasswordStrength(password) {
 export default function SettingsManager() {
   const { user, updateUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'users' ? 'users' : 'profile';
+  const tabParam = searchParams.get('tab');
+  const activeTab = tabParam === 'users' ? 'users' : tabParam === 'vehicle' ? 'vehicle' : 'profile';
 
   const setTab = (tab) => {
     setSearchParams({ tab });
+  };
+
+  // -------------------------------------------------------------
+  // TAB 3: VEHICLE PROFILE STATE & HANDLERS
+  // -------------------------------------------------------------
+  const vehicle = useVanStockStore((s) => s.vehicle);
+  const updateVehicleProfile = useVanStockStore((s) => s.updateVehicleProfile);
+
+  const [vehicleForm, setVehicleForm] = useState({
+    id: vehicle?.id || 'VAN-01',
+    plateNumber: vehicle?.plateNumber || vehicle?.vehicleNumber || 'WP KDK-4521',
+    driver: vehicle?.driver || vehicle?.driverName || 'Sunil Shantha',
+    warehouseLocation: vehicle?.warehouseLocation || 'Deiyandara Central Warehouse',
+    vehicleImage: vehicle?.vehicleImage || null,
+  });
+
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
+  const [isSavingVehicle, setIsSavingVehicle] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Synchronize local form when vehicle profile updates in Zustand store
+  useEffect(() => {
+    if (vehicle) {
+      setVehicleForm({
+        id: vehicle.id || 'VAN-01',
+        plateNumber: vehicle.plateNumber || vehicle.vehicleNumber || 'WP KDK-4521',
+        driver: vehicle.driver || vehicle.driverName || 'Sunil Shantha',
+        warehouseLocation: vehicle.warehouseLocation || 'Deiyandara Central Warehouse',
+        vehicleImage: vehicle.vehicleImage || null,
+      });
+    }
+  }, [vehicle]);
+
+  /**
+   * Processes and downscales selected image file via Canvas compression,
+   * then immediately persists it into vehicleForm and Zustand store.
+   *
+   * @param {File} file - Raw image file from file input or drag-and-drop
+   */
+  const processSelectedFile = async (file) => {
+    if (!file) return;
+
+    if (!file.type || !file.type.startsWith('image/')) {
+      toast.error('Please upload a valid image file (PNG, JPG, WebP).');
+      return;
+    }
+
+    try {
+      setIsCompressingImage(true);
+      const compressedBase64 = await compressImageToDataUrl(file, 600, 600, 0.75);
+      setVehicleForm((prev) => ({ ...prev, vehicleImage: compressedBase64 }));
+      updateVehicleProfile({ vehicleImage: compressedBase64 });
+      toast.success('Vehicle photo attached & persisted (<100KB).');
+    } catch (err) {
+      console.error('Image compression failed:', err);
+      toast.error('Failed to process image. Please try another photo.');
+    } finally {
+      setIsCompressingImage(false);
+    }
+  };
+
+  /**
+   * Handles file input change event.
+   */
+  const handleVehicleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await processSelectedFile(file);
+    }
+  };
+
+  /**
+   * Clears attached vehicle photo from state, store, and file input ref.
+   */
+  const handleRemoveVehicleImage = () => {
+    setVehicleForm((prev) => ({ ...prev, vehicleImage: null }));
+    updateVehicleProfile({ vehicleImage: null });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    toast.info('Vehicle photo removed.');
+  };
+
+  /**
+   * Saves updated vehicle profile attributes to the Zustand store & local storage.
+   */
+  const handleVehicleSubmit = async (e) => {
+    e.preventDefault();
+    if (!vehicleForm.plateNumber.trim()) {
+      toast.error('Vehicle Plate Number is required.');
+      return;
+    }
+
+    setIsSavingVehicle(true);
+    try {
+      const saved = updateVehicleProfile({
+        id: vehicleForm.id.trim(),
+        plateNumber: vehicleForm.plateNumber.trim(),
+        driver: vehicleForm.driver.trim(),
+        route: 'All Routes',
+        warehouseLocation: vehicleForm.warehouseLocation,
+        vehicleImage: vehicleForm.vehicleImage,
+      });
+      if (saved) {
+        setVehicleForm((prev) => ({
+          ...prev,
+          ...saved,
+        }));
+      }
+      toast.success('Vehicle profile saved successfully!');
+    } catch (err) {
+      console.error('Failed to update vehicle profile:', err);
+      toast.error('Failed to save vehicle profile.');
+    } finally {
+      setIsSavingVehicle(false);
+    }
   };
 
   // -------------------------------------------------------------
@@ -244,6 +368,16 @@ export default function SettingsManager() {
     return { total, admins, staff, active };
   }, [usersList]);
 
+  // Curated tab options for mobile dropdown selector, memoized and safely positioned after stats calculation
+  const settingsTabOptions = useMemo(
+    () => [
+      { value: 'profile', label: 'Profile & Security', icon: User },
+      { value: 'users', label: `Staff Access (${stats.total || usersList.length})`, icon: Users },
+      { value: 'vehicle', label: 'Vehicle Profile', icon: Truck },
+    ],
+    [stats.total, usersList.length]
+  );
+
   // Handle Create User Submit
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -346,49 +480,72 @@ export default function SettingsManager() {
 
   return (
     <div className="space-y-5 w-full max-w-5xl mx-auto px-1 sm:px-4 md:px-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 border-b border-gray-200 dark:border-slate-800 pb-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
-            <Shield className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-            <span>Settings & Administration</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 mt-1">
-            Configure executive security credentials, profile identity, and role-based staff access.
-          </p>
+      {/* Page Header (Full Width) */}
+      <div className="w-full border-b border-gray-200 dark:border-slate-800 pb-4">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
+          <Shield className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+          <span>Settings & Administration</span>
+        </h1>
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 mt-1">
+          Configure executive security credentials, profile identity, role-based staff access, and fleet delivery vehicles.
+        </p>
+      </div>
+
+      {/* Tab Navigation Controls (Full Width Below Title) */}
+      <div className="w-full">
+        {/* Mobile View (<640px): Full-Width SearchableSelect Dropdown */}
+        <div className="flex sm:hidden w-full">
+          <SearchableSelect
+            value={activeTab}
+            onChange={(val) => setTab(val || 'profile')}
+            options={settingsTabOptions}
+            clearable={false}
+            className="w-full"
+            placeholder="Switch Settings Tab..."
+          />
         </div>
 
-        {/* Tab Controls — Smooth Touch-Scrollable */}
-        <div className="overflow-x-auto scrollbar-none py-0.5 max-w-full">
-          <div className="inline-flex items-center p-1 bg-gray-100 dark:bg-slate-800/80 rounded-2xl border border-gray-200 dark:border-slate-700 whitespace-nowrap min-w-full sm:min-w-0">
-            <button
-              type="button"
-              onClick={() => setTab('profile')}
-              className={`flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                activeTab === 'profile'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              <span>Profile & Security</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('users')}
-              className={`flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                activeTab === 'users'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Staff Access</span>
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold">
-                {stats.total || usersList.length}
-              </span>
-            </button>
-          </div>
+        {/* Desktop & Tablet View (>=640px): Full-Width Horizontal Tab Bar */}
+        <div className="hidden sm:flex w-full items-center p-1.5 bg-gray-100 dark:bg-slate-800/80 rounded-2xl border border-gray-200 dark:border-slate-700 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setTab('profile')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'profile'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>Profile & Security</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('users')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'users'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Staff Access</span>
+            <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold">
+              {stats.total || usersList.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('vehicle')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'vehicle'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Vehicle Profile</span>
+          </button>
         </div>
       </div>
 
@@ -844,7 +1001,7 @@ export default function SettingsManager() {
 
                           {/* Email */}
                           <td className="px-5 py-3.5 text-gray-600 dark:text-slate-300 font-mono text-[11px]">
-                            {u.email || '—'}
+                            {u.email || 'â€”'}
                           </td>
 
                           {/* Role */}
@@ -884,7 +1041,7 @@ export default function SettingsManager() {
 
                           {/* Created Date */}
                           <td className="px-5 py-3.5 text-gray-500 dark:text-slate-400 text-[11px]">
-                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
+                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'â€”'}
                           </td>
 
                           {/* Action Buttons */}
@@ -935,6 +1092,259 @@ export default function SettingsManager() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* TAB 3: VEHICLE PROFILE VIEW                                       */}
+      {/* ================================================================= */}
+      {activeTab === 'vehicle' && (
+        <form onSubmit={handleVehicleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Card: Vehicle Preview & Identity */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                      Fleet Delivery Vehicle
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                      Active mobile dispatch unit
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Active
+                  </span>
+                </div>
+
+                {/* Vehicle Photo Dropzone & Live Preview */}
+                <div
+                  onClick={() => {
+                    if (!vehicleForm.vehicleImage && !isCompressingImage) {
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const droppedFile = e.dataTransfer.files?.[0];
+                    if (droppedFile) {
+                      await processSelectedFile(droppedFile);
+                    }
+                  }}
+                  className={`mt-5 relative w-full h-52 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center overflow-hidden group ${
+                    vehicleForm.vehicleImage
+                      ? 'border-gray-200 dark:border-slate-700 bg-slate-900/50'
+                      : isDragging
+                      ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 cursor-pointer scale-[1.01]'
+                      : 'border-gray-300 hover:border-indigo-400 dark:border-slate-700 dark:hover:border-indigo-500 bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-900/80 dark:hover:bg-slate-900 cursor-pointer'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    disabled={isCompressingImage}
+                    onChange={handleVehicleImageChange}
+                    className="hidden"
+                  />
+
+                  {vehicleForm.vehicleImage ? (
+                    <div className="relative w-full h-full">
+                      <img
+                        src={vehicleForm.vehicleImage}
+                        alt={vehicleForm.plateNumber}
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Inline Delete Button (Top-Right) */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveVehicleImage();
+                        }}
+                        className="absolute top-2.5 right-2.5 p-1.5 rounded-xl bg-black/70 hover:bg-rose-600 text-white shadow-lg backdrop-blur-md transition-all cursor-pointer z-10"
+                        title="Remove vehicle photo"
+                      >
+                        <X size={16} />
+                      </button>
+                      {/* Hover Re-upload Overlay */}
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-xs font-semibold gap-1.5 backdrop-blur-[1px]"
+                      >
+                        <Upload size={16} />
+                        <span>Click to Change Photo</span>
+                      </div>
+                    </div>
+                  ) : isCompressingImage ? (
+                    <div className="text-center p-4 space-y-2">
+                      <div className="inline-block animate-spin w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full" />
+                      <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                        Compressing image via Canvas...
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 space-y-2 select-none">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center mx-auto border border-indigo-200 dark:border-indigo-800/60 shadow-sm group-hover:scale-105 transition-transform">
+                        <Upload size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-800 dark:text-slate-200">
+                          Click or drag & drop truck photo
+                        </p>
+                        <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
+                          PNG, JPG, WebP auto-compressed under 100KB
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-gray-100 dark:border-slate-700/60 my-5" />
+
+                {/* Specs List */}
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-gray-500 dark:text-slate-400">Plate Number</span>
+                    <span className="font-mono font-bold text-gray-900 dark:text-white bg-slate-100 dark:bg-slate-700/70 px-2 py-0.5 rounded">
+                      {vehicleForm.plateNumber || 'Not Set'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-gray-500 dark:text-slate-400">Fleet ID</span>
+                    <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                      {vehicleForm.id}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-gray-500 dark:text-slate-400">Assigned Driver</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {vehicleForm.driver || 'Unassigned'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-gray-500 dark:text-slate-400">Operating Territory</span>
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                      All Routes
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-gray-500 dark:text-slate-400">Central Hub</span>
+                    <span className="text-gray-700 dark:text-slate-300 truncate max-w-[200px]">
+                      {vehicleForm.warehouseLocation || 'Central Warehouse'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Canvas Compression Informational Pill */}
+                <div className="mt-5 p-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-[11px] text-indigo-900 dark:text-indigo-200 flex items-start gap-2.5">
+                  <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong>Smart Canvas Compression:</strong> Uploaded vehicle photos are automatically downscaled to 600px and converted to JPEG (75% quality), keeping payloads under 100KB for instant mobile syncing.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Card: Vehicle Details Form & Photo Uploader */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Truck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Fleet Vehicle & Driver Profile</span>
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                    Configure registration plate, fleet identifier, designated driver, and primary warehouse hub. Operating territory defaults universally to All Routes.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Plate Number */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                      Plate Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={vehicleForm.plateNumber}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, plateNumber: e.target.value })}
+                      placeholder="e.g. WP KDK-4521"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  {/* Vehicle Fleet Code */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                      Vehicle Fleet Code
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicleForm.id}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, id: e.target.value })}
+                      placeholder="e.g. VAN-01"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Designated Driver */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                      Designated Driver Name
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicleForm.driver}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, driver: e.target.value })}
+                      placeholder="e.g. Sunil Shantha"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  {/* Central Warehouse Location */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                      Central Warehouse Hub
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicleForm.warehouseLocation}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, warehouseLocation: e.target.value })}
+                      placeholder="e.g. Deiyandara Central Warehouse"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                {/* Submit Action */}
+                <div className="border-t border-gray-100 dark:border-slate-700/60 pt-4 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={isSavingVehicle || isCompressingImage}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 disabled:opacity-50 transition-all cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isSavingVehicle ? 'Saving Profile...' : 'Save Vehicle Profile'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
       )}
 
       {/* ================================================================= */}

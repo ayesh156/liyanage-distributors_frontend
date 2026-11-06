@@ -11,6 +11,11 @@ import OutstandingReport from './components/Report/OutstandingReport';
 import RouteManager from './components/Routes/RouteManager';
 import SalesPersonManager from './components/SalesPersons/SalesPersonManager';
 import SettingsManager from './components/Settings/SettingsManager';
+import WarehouseManagement from './components/Warehouse/WarehouseManagement';
+import VanStockManagement from './components/VanStock/VanStockManagement';
+import VanStockTransferDashboard from './components/VanStock/VanStockTransferDashboard';
+import VanStockRepView from './components/VanStock/VanStockRepView';
+import VanStockShareView from './components/VanStock/VanStockShareView';
 import OfflineSentinel from './components/ui/OfflineSentinel';
 import { useAuth } from './context/AuthContext';
 import useAppStore from './hooks/useAppStore';
@@ -66,41 +71,17 @@ function StoresView() {
   const routes = useAppStore((s) => s.routes);
   const initialized = useAppStore((s) => s.initialized);
 
-  /**
-   * HYDRATION-RESILIENT URL PARAM → STORE SYNC
-   *
-   * Problem: On hard-refresh at /stores/:id, React renders synchronously BEFORE
-   * the async hydrate() call finishes. At that point `allShops` is [] and
-   * `selectedShop` / `selectedShopTransactions` are all undefined/null, causing
-   * the UI to freeze on a spinner and header metadata to show "···".
-   *
-   * Fix — three-phase approach:
-   *   Phase 1 (initialized == false): shops haven't loaded yet. We store the
-   *     URL param as "pending" but DON'T call setSelectedShopId yet (it would
-   *     computeSelected on an empty array → no match → everything null).
-   *   Phase 2 (initialized == true && shops loaded): We now have real data.
-   *     Call fetchInvoicesForStore() which uses String()-coerced comparison to
-   *     safely resolve the shop + invoices in a single atomic set().
-   *   Phase 3 (id changes via navigation): The normal setSelectedShopId path
-   *     works fine because shops are already loaded.
-   */
   useEffect(() => {
     const parsedId = id && id !== 'NaN' ? String(id) : null;
 
     if (parsedId == null) {
-      // No URL param — nothing to sync
       return;
     }
 
     if (!initialized) {
-      // Phase 1: still hydrating. Don't call setSelectedShopId yet.
-      // StoresManager will see urlShopId and render the InvoiceHistory shell
-      // with isHydrating=true, showing a skeleton rather than a freeze.
       return;
     }
 
-    // Phase 2+3: global data is loaded. Use the robust fetchInvoicesForStore
-    // action which does String()-safe comparison and handles empty arrays.
     if (String(parsedId) !== String(selectedShopId)) {
       fetchInvoicesForStore(parsedId);
     }
@@ -184,7 +165,6 @@ function SettingsView() {
 export default function App() {
   const { isAuthenticated, isInitializing } = useAuth();
 
-  // Wire up the global API toast handler to use react-toastify
   useEffect(() => {
     setToastHandler((message, type, duration) => {
       if (type === 'error') {
@@ -229,20 +209,32 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<DashboardView />} />
+              {/* Dedicated Central Warehouse Module */}
+              <Route path="warehouse" element={<WarehouseManagement />} />
               <Route path="stores" element={<StoresView />} />
               <Route path="stores/:id" element={<StoresView />} />
+              {/* Field Van Stock & Multi-Location Subsystem Admin Routes */}
+              <Route path="van-stock" element={<VanStockManagement />} />
+              <Route path="van-stock/transfer" element={<VanStockTransferDashboard />} />
+              <Route path="van-stock/confirm/:vanId" element={<VanStockRepView />} />
               <Route path="sales-persons" element={<SalesPersonsView />} />
               <Route path="routes" element={<RoutesView />} />
               <Route path="full-report" element={<ReportView />} />
               <Route path="settings" element={<SettingsView />} />
               <Route path="settings/users" element={<SettingsView />} />
             </Route>
+            {/* Standalone Zero-Login Public Manifest Routes outside admin sidebar chrome */}
+            <Route path="/share/van-manifest" element={<VanStockShareView />} />
+            <Route path="/share/van-manifest/:manifestNo" element={<VanStockShareView />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HydrationGate>
       ) : (
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* Standalone Zero-Login Public Manifest Routes accessible without login */}
+          <Route path="/share/van-manifest" element={<VanStockShareView />} />
+          <Route path="/share/van-manifest/:manifestNo" element={<VanStockShareView />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       )}

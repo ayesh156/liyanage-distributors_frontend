@@ -294,6 +294,8 @@ export function mapRouteFromApi(backendRoute) {
     ? scheduleSource.map((day) => String(day || '').trim()).filter(Boolean)
     : [];
 
+  const salesPerson = backendRoute?.salesPerson || backendRoute?.rep || null;
+
   return {
     id: backendRoute?.id != null ? Number(backendRoute.id) : null,
     routeCode: backendRoute?.routeCode ? String(backendRoute.routeCode) : '',
@@ -302,6 +304,8 @@ export function mapRouteFromApi(backendRoute) {
     areaCoverage: backendRoute?.areaCoverage || '',
     routeDates,
     deliverySchedule: routeDates,
+    salesPerson,
+    rep: salesPerson,
     createdAt: backendRoute?.createdAt || null,
     updatedAt: backendRoute?.updatedAt || null,
   };

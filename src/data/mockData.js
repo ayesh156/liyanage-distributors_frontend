@@ -416,21 +416,8 @@ export const getRouteNames = (routeObjects) => routeObjects.map(r => r.name);
  * id (auto-generated), name, phone, nic, email, address
  */
 
-/** Unified initial reactive array for Sales Persons */
-export const initialSalesPersons = [
-  { id: 1, name: 'Kamal Perera',      phone: '077-1112233', nic: '851234567V', email: 'kamal.perera@example.com',   address: '23 Temple Road, Morawaka' },
-  { id: 2, name: 'Nimal Fernando',    phone: '077-2223344', nic: '882345678V', email: 'nimal.fernando@example.com', address: '45 Lake Road, Akuressa' },
-  { id: 3, name: 'Sunil Silva',       phone: '077-3334455', nic: '783456789V', email: 'sunil.silva@example.com',    address: '12 Main Street, Deniyaya' },
-  { id: 4, name: 'Priya Jayawardena', phone: '077-4445566', nic: '914567890V', email: 'priya.j@example.com',       address: '78 Galle Road, Urubokka' },
-  { id: 5, name: 'Rohan Weerasinghe', phone: '077-5556677', nic: '865678901V', email: 'rohan.w@example.com',       address: '56 Station Road, Morawaka' },
-  { id: 6, name: 'Saman Kumara',      phone: '077-6667788', nic: '896789012V', email: 'saman.k@example.com',       address: '34 Colombo Road, Akuressa' },
-  { id: 7, name: 'Upul Rathnayake',   phone: '077-7778899', nic: '807890123V', email: 'upul.r@example.com',        address: '15 Beach Road, Deniyaya' },
-  { id: 8, name: 'Lalith Dissanayake',phone: '077-8889900', nic: '928901234V', email: 'lalith.d@example.com',      address: '90 Station Road, Urubokka' },
-  { id: 9, name: 'Ajith Bandara',     phone: '077-9990011', nic: '839012345V', email: 'ajith.b@example.com',       address: '34 Main Street, Kamburupitiya' },
-  { id: 10, name: 'Dinesh Kumara',     phone: '077-1002003', nic: '900123456V', email: 'dinesh.k@example.com',      address: '12 Church Road, Kamburupitiya' },
-  { id: 11, name: 'Harsha De Silva',   phone: '077-3004005', nic: '860234567V', email: 'harsha.d@example.com',      address: '56 Beach Road, Morawaka' },
-  { id: 12, name: 'Mahesh Jayasuriya', phone: '077-5006007', nic: '930345678V', email: 'mahesh.j@example.com',     address: '89 Lake Road, Akuressa' },
-];
+/** Unified initial reactive array for Sales Persons (Empty by default: strictly sourced from DB) */
+export const initialSalesPersons = [];
 
 /** Available bank names for cheque/check entries */
 export const bankNames = [

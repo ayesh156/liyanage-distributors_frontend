@@ -805,7 +805,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
               </span>
             </div>
             <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Total Market Outstanding</p>
-            <p className="text-2xl font-bold text-accent-600 dark:text-accent-400">{formatCurrency(Math.round(sharedTotalMarketOutstanding))}</p>
+            <p className="text-xl sm:text-2xl font-bold text-accent-600 dark:text-accent-400 break-words">{formatCurrency(Math.round(sharedTotalMarketOutstanding))}</p>
           </div>
         </div>
 
@@ -856,7 +856,7 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
               </span>
             </div>
             <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Avg Outstanding / Debtor</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">{formatCurrency(Math.round(summary.avgOutstanding))}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-slate-100 break-words">{formatCurrency(Math.round(summary.avgOutstanding))}</p>
             <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1">
               Highest: {formatCurrency(Math.round(summary.highestOutstanding))}
             </p>
@@ -932,56 +932,57 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
 
                 return (
                   <div key={group.shopId} className="glass-card overflow-hidden">
-                    {/* Shop Header */}
+                    {/* Shop Header — Prevents Right-Edge Balance Clipping */}
                     <div
-                      className="flex items-center justify-between p-3 sm:px-5 sm:py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors dark:border-slate-700 dark:hover:bg-slate-700/30"
+                      className="flex items-center justify-between p-3 sm:px-5 sm:py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors dark:border-slate-700 dark:hover:bg-slate-700/30 gap-2 sm:gap-4"
                       onClick={() => toggleBucket(group.shopId)}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-100 to-orange-50 dark:from-accent-900/40 dark:to-orange-900/30 flex items-center justify-center text-sm font-bold text-accent-600 dark:text-accent-400">
+                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-accent-100 to-orange-50 dark:from-accent-900/40 dark:to-orange-900/30 flex items-center justify-center text-sm font-bold text-accent-600 dark:text-accent-400 flex-shrink-0">
                           {group.shopName[0]}
                         </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">{group.shopName}</h3>
-                          <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-slate-400 mt-0.5">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{group.shopName}</h3>
+                          <div className="flex items-center gap-2 sm:gap-3 text-[10px] text-gray-500 dark:text-slate-400 mt-0.5 flex-wrap">
                             {group.shop?.route && (
-                              <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                                <MapPin size={10} />
-                                <span className="font-medium">{group.shop.route}</span>
+                              <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 font-medium">
+                                <MapPin size={9} />
+                                <span>{group.shop.route}</span>
                               </span>
                             )}
                             {group.shop?.contact && (
                               <span className="flex items-center gap-1">
-                                <Phone size={10} />
+                                <Phone size={9} />
                                 {group.shop.contact}
                               </span>
                             )}
                             {getSalesPersonName(group.shop) && (
                               <span className="flex items-center gap-1">
-                                <User size={10} />
+                                <User size={9} />
                                 {getSalesPersonName(group.shop)}
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider">Outstanding</p>
-                          <p className="text-lg font-bold text-accent-600 dark:text-accent-400">{formatCurrency(group.totalOutstanding)}</p>
+                      <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 text-right">
+                        <div>
+                          <p className="text-[9px] sm:text-[10px] text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider">Outstanding</p>
+                          <p className="text-base sm:text-lg font-bold text-accent-600 dark:text-accent-400 font-mono whitespace-nowrap">{formatCurrency(group.totalOutstanding)}</p>
                         </div>
                         <ChevronDown
                           size={16}
-                          className={`text-gray-400 dark:text-slate-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                          className={`text-gray-400 dark:text-slate-500 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
                         />
                       </div>
                     </div>
 
-                    {/* Invoices Table */}
+                    {/* Invoices Section (Desktop Table + Mobile Cards) */}
                     {isExpanded && (
                       <>
                         <div className="px-2 sm:px-5 pb-4">
-                          <div className="overflow-x-auto w-full scrollbar-thin">
+                          {/* Desktop Table (>=640px) */}
+                          <div className="hidden sm:block overflow-x-auto w-full scrollbar-thin">
                             <table className="w-full table-auto">
                             <thead>
                               <tr className="table-header-row">
@@ -1100,6 +1101,82 @@ export default function OutstandingReport({ shops, allShops, generateOutstanding
                               )}
                             </tbody>
                             </table>
+                          </div>
+
+                          {/* Mobile Stacked Invoice Cards (<640px) */}
+                          <div className="sm:hidden space-y-2 pt-2">
+                            {paginatedInvoices.length === 0 ? (
+                              <div className="text-center py-6 text-gray-500 dark:text-slate-400 text-xs">
+                                No invoices found
+                              </div>
+                            ) : (
+                              paginatedStatementRows.map((row, idx) => {
+                                const dynamicAgeDays = computeElapsedDays(row.date);
+                                const displayReceived = toMoneyNumber(row.received);
+                                const displayBalanceDue = toMoneyNumber(row.balanceDue);
+                                const receivedDisplayText = displayReceived > 0
+                                  ? `- ${formatCurrency(displayReceived)}`
+                                  : '—';
+                                const displayDocumentType = resolveRowDocTypeLabel(row);
+
+                                return (
+                                  <div
+                                    key={row.key || `${row.docNo}-${idx}`}
+                                    className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 text-xs space-y-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">
+                                          #{indexOfFirstRow + idx + 1}
+                                        </span>
+                                        <span className="font-mono font-bold text-gray-900 dark:text-slate-100 text-xs truncate">
+                                          {normalizeInvoiceNo(row.docNo)}
+                                        </span>
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-current/40 font-semibold self-start flex-shrink-0">
+                                          {displayDocumentType}
+                                        </span>
+                                      </div>
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                        dynamicAgeDays > 60
+                                          ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+                                          : dynamicAgeDays > 45
+                                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                          : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                                      }`}>
+                                        {dynamicAgeDays}d
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-slate-400">
+                                      <span className="flex items-center gap-1">
+                                        <CalendarDays size={11} className="flex-shrink-0" />
+                                        <span>{formatDate(row.date)}</span>
+                                      </span>
+                                      {row.description && (
+                                        <span className="truncate max-w-[150px] text-slate-600 dark:text-slate-300 italic" title={row.description}>
+                                          {row.description}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-1.5 pt-1.5 border-t border-gray-200/60 dark:border-slate-700/60 font-mono text-center">
+                                      <div className="p-1 rounded bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                                        <span className="text-[9px] text-gray-400 dark:text-slate-500 uppercase block font-sans">Amount</span>
+                                        <span className="text-[11px] font-semibold text-gray-800 dark:text-slate-200">{formatCurrency(row.amount)}</span>
+                                      </div>
+                                      <div className="p-1 rounded bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                                        <span className="text-[9px] text-gray-400 dark:text-slate-500 uppercase block font-sans">Received</span>
+                                        <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{receivedDisplayText}</span>
+                                      </div>
+                                      <div className="p-1 rounded bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                                        <span className="text-[9px] text-gray-400 dark:text-slate-500 uppercase block font-sans font-bold">Balance</span>
+                                        <span className="text-[11px] font-bold text-accent-600 dark:text-accent-400">{formatCurrency(displayBalanceDue)}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
                           </div>
                         </div>
 

@@ -1,13 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, FileText, ChevronLeft, Menu, X, Map, Users, Settings } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Store,
+  Truck,
+  FileText,
+  ChevronLeft,
+  Menu,
+  X,
+  Map,
+  Users,
+  Settings,
+  Warehouse,
+} from 'lucide-react';
 
-const navItems = [
+// Primary navigation list: Warehouse added near top, Van Stock at the bottom-most position
+const primaryNavItems = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
   { id: '/stores', label: 'Hardware Stores', icon: Store },
   { id: '/sales-persons', label: 'Sales Persons', icon: Users },
   { id: '/routes', label: 'Route Management', icon: Map },
   { id: '/full-report', label: 'Reports', icon: FileText },
+  { id: '/warehouse', label: 'Warehouse', icon: Warehouse },
+  { id: '/van-stock', label: 'Van Stock', icon: Truck },
+];
+
+// Utility footer navigation list
+const footerUtilityNavItems = [
   { id: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -32,7 +51,7 @@ export default function Sidebar() {
 
   // Determine active route
   const activeRoute = (path) => {
-    if (path === '/') return location.pathname === '';
+    if (path === '/') return location.pathname === '/' || location.pathname === '';
     return location.pathname.startsWith(path);
   };
 
@@ -63,14 +82,14 @@ export default function Sidebar() {
             )}
           </div>
 
-          {/* Navigation items */}
+          {/* Primary Navigation items */}
           <nav className="px-3 space-y-1.5 mt-2">
-            {navItems.map(({ id, label, icon: Icon }) => (
+            {primaryNavItems.map(({ id, label, icon: Icon }) => (
               <div key={id} className="relative group">
                 <button
                   type="button"
                   onClick={() => handleNav(id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
                     activeRoute(id)
                       ? 'bg-accent-50 text-accent-700 shadow-sm border border-accent-200 dark:bg-accent-900/30 dark:text-accent-300 dark:border-accent-700 font-semibold'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700/50'
@@ -91,19 +110,45 @@ export default function Sidebar() {
           </nav>
         </div>
 
-        {/* Collapse toggle (desktop only) */}
-        {!isMobile && (
-          <div className="hidden lg:block px-3 pb-4">
-            <button
-              type="button"
-              onClick={() => setCollapsed(!collapsed)}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-200 dark:text-slate-500 dark:hover:text-slate-300 dark:hover:bg-slate-700/50"
-            >
-              <ChevronLeft size={14} className={`transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
-              {!collapsed && <span>Collapse</span>}
-            </button>
-          </div>
-        )}
+        {/* Footer Utility Zone: Settings immediately above Collapse button */}
+        <div className="px-3 pb-3 space-y-1.5 border-t border-gray-100 dark:border-slate-700/60 pt-2">
+          {footerUtilityNavItems.map(({ id, label, icon: Icon }) => (
+            <div key={id} className="relative group">
+              <button
+                type="button"
+                onClick={() => handleNav(id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
+                  activeRoute(id)
+                    ? 'bg-accent-50 text-accent-700 shadow-sm border border-accent-200 dark:bg-accent-900/30 dark:text-accent-300 dark:border-accent-700 font-semibold'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700/50'
+                } ${!isExpanded ? 'justify-center' : ''}`}
+              >
+                <Icon size={19} className="flex-shrink-0" />
+                {isExpanded && <span className="truncate">{label}</span>}
+              </button>
+
+              {!isExpanded && (
+                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-white text-gray-700 text-xs font-medium rounded-lg border border-gray-200 shadow-xl whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60] pointer-events-none dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600">
+                  {label}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Collapse toggle (desktop only) */}
+          {!isMobile && (
+            <div className="hidden lg:block pt-1">
+              <button
+                type="button"
+                onClick={() => setCollapsed(!collapsed)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-200 dark:text-slate-500 dark:hover:text-slate-300 dark:hover:bg-slate-700/50 cursor-pointer"
+              >
+                <ChevronLeft size={14} className={`transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
+                {!collapsed && <span>Collapse</span>}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -125,7 +170,7 @@ export default function Sidebar() {
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Open navigation menu"
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/90 backdrop-blur-xl border border-gray-200/80 flex items-center justify-center text-gray-600 hover:text-gray-900 shadow-sm active:scale-95 transition-all dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-300 dark:hover:text-white"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/90 backdrop-blur-xl border border-gray-200/80 flex items-center justify-center text-gray-600 hover:text-gray-900 shadow-sm active:scale-95 transition-all dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-300 dark:hover:white cursor-pointer"
         >
           <Menu size={18} />
         </button>
@@ -148,7 +193,7 @@ export default function Sidebar() {
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close navigation menu"
-              className="absolute top-4 right-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+              className="absolute top-4 right-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             >
               <X size={18} />
             </button>

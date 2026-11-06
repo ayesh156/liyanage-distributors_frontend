@@ -1,6 +1,9 @@
+import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 
 const ENTITY_LABELS = {
+  sku:     { title: 'Delete SKU',        icon: 'Package' },
   route:   { title: 'Delete Route',      icon: 'Route' },
   store:   { title: 'Delete Store',      icon: 'Store' },
   invoice: { title: 'Delete Invoice',    icon: 'FileText' },
@@ -13,8 +16,9 @@ export default function DeleteConfirmModal({
   isOpen,
   onClose,
   onConfirm,
-  entityType = 'route',   // 'route' | 'store' | 'invoice' | 'payment' | 'transaction'
+  entityType = 'route',   // 'route' | 'store' | 'invoice' | 'payment' | 'transaction' | 'sku'
   entityName = 'this item',
+  message = null,
   extraMessage = null,
   isLoading = false,
 }) {
@@ -22,10 +26,10 @@ export default function DeleteConfirmModal({
 
   const config = ENTITY_LABELS[entityType] || { title: 'Delete Item', icon: 'AlertTriangle' };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop — no close on outside click */}
-      <div className="absolute inset-0 bg-gray-900/20 backdrop-blur-sm dark:bg-gray-900/40" />
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
       {/* Modal card */}
       <div className="relative w-full max-w-sm bg-white border border-gray-200 rounded-2xl shadow-xl dark:bg-slate-800 dark:border-slate-700 overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Close button */}
@@ -49,11 +53,17 @@ export default function DeleteConfirmModal({
 
           {/* Message */}
           <p className="text-center text-sm text-gray-600 dark:text-slate-400 leading-relaxed">
-            Are you sure you want to permanently delete{' '}
-            <span className="font-semibold text-gray-800 dark:text-slate-200">
-              {entityName}
-            </span>
-            ? This action cannot be undone.
+            {message ? (
+              message
+            ) : (
+              <>
+                Are you sure you want to permanently delete{' '}
+                <span className="font-semibold text-gray-800 dark:text-slate-200">
+                  {entityName}
+                </span>
+                ? This action cannot be undone.
+              </>
+            )}
           </p>
 
           {/* Optional extra message */}
@@ -94,6 +104,7 @@ export default function DeleteConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

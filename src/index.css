@@ -12,6 +12,69 @@
    ============================================================ */
 @media print {
 
+  /* ── 0. Strict Print Portal Isolation: completely hide #root when report portal is active ── */
+  body.print-modal-active #root,
+  body:has(#print-report-portal:not(:empty)) #root {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #print-report-portal {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    position: static !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #print-report-portal .no-print,
+  #print-report-portal button {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* ── 0.1 Strict Sheet Overflow, Table-Layout & Scrollbar Elimination ── */
+  #print-report-portal,
+  #print-report-portal > div,
+  #van-stock-manifest-sheet,
+  #damaged-goods-report-sheet {
+    overflow: visible !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  #print-report-portal::-webkit-scrollbar,
+  #van-stock-manifest-sheet::-webkit-scrollbar,
+  #damaged-goods-report-sheet::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  #van-stock-manifest-sheet table,
+  #damaged-goods-report-sheet table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
   /* ── 1. Root reset — white paper, black ink, full height ──── */
   html,
   body,

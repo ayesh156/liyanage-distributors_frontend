@@ -383,7 +383,7 @@ const useAppStore = create((set, get) => {
             shops: normalizedInitialStores,
             invoices: [...initialInvoices],
             transactions: [...initialInvoices],
-            salesPersons: [...fallbackSalesPersons],
+            salesPersons: [], // Strictly no dummy fallback sales staff; populated solely from database
             routes: [...initialRoutes],
             routeNames: getRouteNames(initialRoutes),
             liveData: false,

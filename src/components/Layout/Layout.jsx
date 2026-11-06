@@ -5,7 +5,9 @@ import UserMenu from './UserMenu';
 
 const routeMeta = {
   '/': { title: 'Dashboard', subtitle: 'Overview of your business outstanding' },
+  '/warehouse': { title: 'Central Warehouse Management', subtitle: 'Master SKU catalog, buffer inventory, stocktake reconciliation & supplier intake' },
   '/stores': { title: 'Hardware Stores', subtitle: 'Manage your hardware store accounts' },
+  '/van-stock': { title: 'Van Stock Management', subtitle: 'Multi-location inventory, mobile truck stock & par replenishment' },
   '/sales-persons': { title: 'Sales Representatives', subtitle: 'Manage sales field officers and assign stores' },
   '/routes': { title: 'Route Management', subtitle: 'Configure delivery routes, areas & schedules' },
   '/full-report': { title: 'Outstanding Report', subtitle: 'Detailed outstanding statement' },
@@ -14,7 +16,9 @@ const routeMeta = {
 
 function getMeta(pathname) {
   if (pathname === '/') return routeMeta['/'];
+  if (pathname.startsWith('/warehouse')) return routeMeta['/warehouse'];
   if (pathname.startsWith('/stores')) return routeMeta['/stores'];
+  if (pathname.startsWith('/van-stock')) return routeMeta['/van-stock'];
   if (pathname.startsWith('/sales-persons')) return routeMeta['/sales-persons'];
   if (pathname.startsWith('/routes')) return routeMeta['/routes'];
   if (pathname.startsWith('/full-report')) return routeMeta['/full-report'];
@@ -47,10 +51,10 @@ export default function Layout() {
         <div className="flex items-center justify-between px-2 sm:px-4 md:px-6 py-2.5 sm:py-3 gap-2">
           {/* Title group with mobile hamburger clearance */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Mobile hamburger clearance spacer (w-10 ensures 40px tap space) */}
-            <div className="lg:hidden w-10 flex-shrink-0" aria-hidden="true" />
+            {/* Mobile hamburger clearance spacer (w-11 sm:w-12 guarantees 44px-48px tap space clearance) */}
+            <div className="lg:hidden w-11 sm:w-12 flex-shrink-0" aria-hidden="true" />
             <div className="min-w-0">
-              <h2 className="text-base sm:text-lg font-bold sm:font-semibold text-slate-900 dark:text-white capitalize truncate max-w-[160px] xs:max-w-[220px] sm:max-w-none">
+              <h2 className="text-base sm:text-lg font-bold sm:font-semibold text-slate-900 dark:text-white capitalize truncate max-w-[150px] xs:max-w-[210px] sm:max-w-none">
                 {meta.title}
               </h2>
               <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
