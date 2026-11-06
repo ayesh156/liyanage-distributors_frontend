@@ -29,8 +29,8 @@ export const formatSriLankanWhatsAppNumber = (rawPhone) => {
 };
 
 /**
- * Constructs a universally supported, clickable WhatsApp dispatch message.
- * Employs standard universal emojis (📦 / 📄) to eliminate surrogate pair rendering glitches
+ * Constructs a clean, universally supported, clickable WhatsApp dispatch message.
+ * Omits emojis to eliminate surrogate pair rendering glitches and Mojibake,
  * and explicitly inserts a double newline (\n\n) before URLs so WhatsApp's text parser
  * reliably formats the hyperlink as clickable.
  *
@@ -39,7 +39,7 @@ export const formatSriLankanWhatsAppNumber = (rawPhone) => {
  * @returns {string} Formatted dispatch message text
  */
 export const buildManifestDispatchMessage = (manifestCode, shareUrl) => {
-  return `📦 Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
+  return `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
 };
 
 /**

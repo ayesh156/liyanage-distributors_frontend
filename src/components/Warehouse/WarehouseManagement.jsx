@@ -48,6 +48,7 @@ import LoadVanStockModal from '../VanStock/LoadVanStockModal';
 import OwnerSignatureModal from '../VanStock/OwnerSignatureModal';
 import DeleteConfirmModal from '../ui/DeleteConfirmModal';
 import useVanStockStore from '../../hooks/useVanStockStore';
+import { resolveServerImageUrl } from '../../utils/imageCompression';
 import {
   calcNetUnitPrice,
   calcTotalRealValue,
@@ -231,7 +232,7 @@ export default function WarehouseManagement() {
                 <span className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-zinc-700">
                   {vehicle?.vehicleImage && (
                     <img
-                      src={vehicle.vehicleImage}
+                      src={resolveServerImageUrl(vehicle.vehicleImage)}
                       alt={vehicle.plateNumber || vehicle.id}
                       className="w-4 h-4 rounded-full object-cover border border-slate-300 dark:border-zinc-600"
                     />

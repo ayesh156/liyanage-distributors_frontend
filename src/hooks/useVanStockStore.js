@@ -137,7 +137,7 @@ export const useVanStockStore = create((set, get) => ({
   isSyncing: false,
   isHydrated: false,
 
-  // â”€â”€ Manifest History Lookup Selector â”€â”€
+  // ── Manifest History & Revision Lookup Selector ──
   getManifestByCode: (manifestNoOrDate) => {
     if (!manifestNoOrDate) return get().dailyManifest;
     const { dailyManifest, manifestHistory = [] } = get();
@@ -150,7 +150,16 @@ export const useVanStockStore = create((set, get) => ({
         m.id === manifestNoOrDate ||
         (m.manifestDate && m.manifestDate.startsWith(manifestNoOrDate))
     );
-    return found || null;
+    if (found) return found;
+
+    // Check if dailyManifest matches the base manifest code without revision suffix
+    const baseCode = manifestNoOrDate.split('-R')[0];
+    const dailyBase = dailyManifest?.manifestNo?.split('-R')[0];
+    if (baseCode && dailyBase && baseCode === dailyBase) {
+      return dailyManifest;
+    }
+
+    return null;
   },
 
   // â”€â”€ Setters â”€â”€
@@ -230,7 +239,7 @@ export const useVanStockStore = create((set, get) => ({
             routeName: 'All Routes',
             subRoutes: [],
             warehouseLocation: current.warehouseLocation || persistedLocally.warehouseLocation || backendVehicle.warehouseLocation || 'Deiyandara Central Warehouse',
-            vehicleImage: current.vehicleImage !== undefined ? current.vehicleImage : (persistedLocally.vehicleImage !== undefined ? persistedLocally.vehicleImage : null),
+            vehicleImage: backendVehicle.vehicleImage || current.vehicleImage || (persistedLocally.vehicleImage !== undefined ? persistedLocally.vehicleImage : '/images/van/van_active.jpg'),
           };
         }
         if (vanStock) updates.vanStock = vanStock.map(sanitizeVanStockItem);
@@ -280,6 +289,17 @@ export const useVanStockStore = create((set, get) => ({
 
       if (manRes.status === 'fulfilled' && manRes.value?.success && manRes.value.data) {
         updates.dailyManifest = manRes.value.data;
+        const manifestStatus = manRes.value.data.status;
+        const isSigned = manifestStatus === 'REP_ACCEPTED' || manifestStatus === 'FULLY_VERIFIED' || manifestStatus === 'VERIFIED';
+        if (isSigned) {
+          const currentVan = updates.vanStock || get().vanStock || [];
+          updates.vanStock = currentVan.map((v) => ({
+            ...v,
+            status: 'APPROVED',
+            repChecked: true,
+            discrepancyFlag: false,
+          }));
+        }
       }
 
       if (histRes.status === 'fulfilled' && histRes.value?.success && histRes.value.data) {
@@ -303,7 +323,7 @@ export const useVanStockStore = create((set, get) => ({
     }
   },
 
-  // â”€â”€ KPIs Selector â”€â”€
+  // ── KPIs Selector ──
   getKpis: () => {
     const { mainStoreStock, vanStock, damagedGoods, products, dailyManifest } = get();
 
@@ -323,7 +343,7 @@ export const useVanStockStore = create((set, get) => ({
     let vanTotalValue = 0;
     let vanTotalUnits = 0;
     let pendingConfirmationCount = 0;
-    const isFullyVerified = dailyManifest?.status === 'FULLY_VERIFIED';
+    const isFullyVerified = dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED';
     const isSignedManifest = isFullyVerified || dailyManifest?.status === 'PARTIAL_DISCREPANCY';
     vanStock.forEach((item) => {
       if (item.isActive === false) return;
@@ -1562,11 +1582,17 @@ export const useVanStockStore = create((set, get) => ({
 
   /**
    * Action: Submit Rep Verification with Signature
+   * Supports target manifest revision code (e.g. MAN-YYYYMMDD-01-R4)
    */
-  submitRepVerificationWithSignature: async ({ signatureData, repName }) => {
+  submitRepVerificationWithSignature: async ({ signatureData, repName, manifestNo: targetManifestNo }) => {
     const { dailyManifest, vanStock } = get();
     const nowIso = new Date().toISOString();
     const signer = repName || dailyManifest.repName || 'Kamal Perera';
+    const effectiveManifestNo = targetManifestNo || dailyManifest.manifestNo;
+
+    // Parse revision if present in target code
+    const revMatch = effectiveManifestNo?.match(/-R(\d+)$/i);
+    const parsedRev = revMatch ? parseInt(revMatch[1], 10) : dailyManifest.manifestRevision || 1;
 
     const activeItems = vanStock.filter((i) => i.quantity > 0 && i.isActive !== false);
     const uncheckedActiveItems = activeItems.filter((i) => !i.repChecked);
@@ -1604,15 +1630,17 @@ export const useVanStockStore = create((set, get) => ({
       }
     });
 
-    const manifestStatus = isFullVerification ? 'FULLY_VERIFIED' : 'PARTIAL_DISCREPANCY';
+    const manifestStatus = isFullVerification ? 'REP_ACCEPTED' : 'PARTIAL_DISCREPANCY';
     const updatedManifest = {
       ...dailyManifest,
+      manifestNo: effectiveManifestNo,
+      manifestRevision: parsedRev,
       repSignatureData: signatureData,
+      repSignature: signatureData,
       repSignedBy: signer,
       repSignedAt: nowIso,
       status: manifestStatus,
       uncheckedCount: isFullVerification ? 0 : uncheckedActiveItems.length,
-      manifestRevision: dailyManifest.manifestRevision || 1,
     };
 
     const prevHistory = get().manifestHistory || [];
@@ -1629,13 +1657,25 @@ export const useVanStockStore = create((set, get) => ({
     persistState(get());
 
     try {
-      await vanStockApi.verifyPublicManifest(dailyManifest.manifestNo, {
+      await vanStockApi.signPublicManifest(effectiveManifestNo, {
         signatureData,
+        repSignature: signatureData,
+        signature: signatureData,
         repName: signer,
         items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
       });
     } catch (err) {
-      console.warn('Backend verifyPublicManifest sync error:', err);
+      try {
+        await vanStockApi.verifyPublicManifest(effectiveManifestNo, {
+          signatureData,
+          repSignature: signatureData,
+          signature: signatureData,
+          repName: signer,
+          items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
+        });
+      } catch (innerErr) {
+        console.warn('Backend signature verification sync error:', innerErr);
+      }
     }
 
     return {
@@ -1867,11 +1907,13 @@ export const useVanStockStore = create((set, get) => ({
   },
 }));
 
-// â”€â”€ Auto-Hydration from Real Backend on Store Bootstrap â”€â”€
+// ── Auto-Hydration from Real Backend on Store Bootstrap ──
 if (typeof window !== 'undefined') {
-  // Trigger initial asynchronous hydration
+  // Trigger initial asynchronous hydration only when not on zero-login public share routes
   setTimeout(() => {
-    useVanStockStore.getState().fetchInitialData();
+    if (!window.location.pathname.includes('/share/')) {
+      useVanStockStore.getState().fetchInitialData();
+    }
   }, 100);
 
   // â”€â”€ Real-Time Cross-Tab Synchronization Listener â”€â”€

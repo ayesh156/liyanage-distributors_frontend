@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   AlertCircle,
   History,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import useVanStockStore from '../../hooks/useVanStockStore';
@@ -50,22 +51,67 @@ export default function VanStockShareView() {
   const toggleAllRepItemsChecked = useVanStockStore((s) => s.toggleAllRepItemsChecked);
 
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [localItemChecks, setLocalItemChecks] = useState({});
   const [remoteManifest, setRemoteManifest] = useState(null);
+  const [fetchError, setFetchError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(Boolean(targetCode));
 
   // Live public manifest hydration for WhatsApp zero-login links
   useEffect(() => {
+    let isMounted = true;
     if (targetCode) {
+      setIsLoading(true);
+      setFetchError(false);
+      setErrorMessage('');
+
       vanStockApi.getPublicManifestShare(targetCode)
         .then((res) => {
+          if (!isMounted) return;
           if (res?.data) {
             setRemoteManifest(res.data);
+            setFetchError(false);
+          } else {
+            // Check local store fallback before declaring missing manifest
+            const localFallback = getManifestByCode ? getManifestByCode(targetCode) : null;
+            if (!localFallback) {
+              setFetchError(true);
+              setErrorMessage('Manifest Not Found or Link Invalid. Please verify the link with your warehouse dispatcher.');
+            }
           }
         })
-        .catch((_err) => {
-          // Graceful fallback to offline local store
+        .catch((err) => {
+          if (!isMounted) return;
+          console.warn('[VanStockShareView] Failed to fetch manifest:', err);
+
+          // Check if local store has this exact manifest before declaring failure
+          const localFallback = getManifestByCode ? getManifestByCode(targetCode) : null;
+          const foundInHistory = manifestHistory.find(
+            (m) => m.manifestNo === targetCode || m.id === targetCode
+          );
+
+          if (localFallback || foundInHistory) {
+            // Local offline data is available for this manifest
+            setFetchError(false);
+          } else {
+            setFetchError(true);
+            setErrorMessage('Manifest Not Found or Link Invalid. Please verify the link with your warehouse dispatcher.');
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsLoading(false);
+          }
         });
+    } else {
+      setIsLoading(false);
+      setFetchError(false);
     }
-  }, [targetCode]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [targetCode, getManifestByCode, manifestHistory]);
 
   // Determine active manifest based on remote response or route/query parameters
   const matchedManifest = useMemo(() => {
@@ -75,27 +121,125 @@ export default function VanStockShareView() {
       const found = getManifestByCode(targetCode);
       if (found) return found;
     }
-    return (
-      manifestHistory.find(
-        (m) =>
-          m.manifestNo === targetCode ||
-          m.id === targetCode ||
-          (dateParam && m.manifestDate && m.manifestDate.startsWith(dateParam))
-      ) || dailyManifest
+    const foundInHistory = manifestHistory.find(
+      (m) =>
+        m.manifestNo === targetCode ||
+        m.id === targetCode ||
+        (dateParam && m.manifestDate && m.manifestDate.startsWith(dateParam))
     );
+    if (foundInHistory) return foundInHistory;
+
+    // Do NOT fall back to dailyManifest if a specific targetCode was requested but not found
+    return null;
   }, [remoteManifest, targetCode, dateParam, dailyManifest, manifestHistory, getManifestByCode]);
 
-  const isHistorical = Boolean(
-    matchedManifest && matchedManifest.manifestNo !== dailyManifest?.manifestNo
-  );
-  const activeManifest = matchedManifest || dailyManifest;
+  // Helper to extract revision number from manifest object or manifestNo code
+  const getRevisionNumber = (manifest) => {
+    if (!manifest) return 1;
+    if (typeof manifest.manifestRevision === 'number') return manifest.manifestRevision;
+    const match = String(manifest.manifestNo || '').match(/-R(\d+)$/i);
+    return match ? parseInt(match[1], 10) : 1;
+  };
 
-  const activeVanItems = useMemo(() => {
-    if (isHistorical && activeManifest.items && activeManifest.items.length > 0) {
-      return activeManifest.items;
+  // Determine whether this manifest is the latest revision for that Van on that date
+  const isLatestRevision = useMemo(() => {
+    if (!matchedManifest) return true;
+
+    // Prioritize authoritative backend evaluation if returned
+    if (typeof matchedManifest.isLatestRevision === 'boolean') {
+      return matchedManifest.isLatestRevision;
     }
-    return vanStock.filter((v) => v.quantity > 0);
-  }, [isHistorical, activeManifest, vanStock]);
+
+    const currentRev = getRevisionNumber(matchedManifest);
+    const currentDateStr = matchedManifest.manifestDate
+      ? String(matchedManifest.manifestDate).slice(0, 10)
+      : '';
+
+    // Check store dailyManifest
+    if (dailyManifest) {
+      const dailyDateStr = dailyManifest.manifestDate
+        ? String(dailyManifest.manifestDate).slice(0, 10)
+        : '';
+      const dailyRev = getRevisionNumber(dailyManifest);
+      if (currentDateStr && dailyDateStr && currentDateStr === dailyDateStr && dailyRev > currentRev) {
+        return false;
+      }
+    }
+
+    // Check store manifestHistory for any newer revision on the same date
+    if (manifestHistory && manifestHistory.length > 0) {
+      const hasNewer = manifestHistory.some((m) => {
+        const mDateStr = m.manifestDate ? String(m.manifestDate).slice(0, 10) : '';
+        const mRev = getRevisionNumber(m);
+        return mDateStr === currentDateStr && mRev > currentRev;
+      });
+      if (hasNewer) return false;
+    }
+
+    return true;
+  }, [matchedManifest, dailyManifest, manifestHistory]);
+
+  // Active Manifest Resolution Logic:
+  // Manifest is Active (and signable) if its status is DISPATCHED or PENDING (or requires rep signature),
+  // AND it is the most recent revision for that Van on that date.
+  // The strict historical lock is removed if the manifest status explicitly requires a rep signature.
+  const isHistorical = useMemo(() => {
+    if (!matchedManifest) return false;
+
+    // Prioritize authoritative backend evaluation if provided
+    if (typeof matchedManifest.isHistorical === 'boolean') {
+      return matchedManifest.isHistorical;
+    }
+
+    const status = String(matchedManifest.status || '').toUpperCase();
+    const requiresRepSignature =
+      status === 'DISPATCHED' || status === 'PENDING' || !matchedManifest.repSignatureData;
+
+    // If it is the latest revision and requires rep signature, it is strictly Active (not historical)
+    if (isLatestRevision && requiresRepSignature) {
+      return false;
+    }
+
+    // If it is an older revision, it is historical
+    if (!isLatestRevision) {
+      return true;
+    }
+
+    // If it's today's latest revision, keep it active to allow verification / updates
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const manifestDateStr = matchedManifest.manifestDate
+      ? String(matchedManifest.manifestDate).slice(0, 10)
+      : todayStr;
+
+    if (manifestDateStr < todayStr && !requiresRepSignature) {
+      return true;
+    }
+
+    return false;
+  }, [matchedManifest, isLatestRevision]);
+
+  const activeManifest = matchedManifest || (targetCode ? null : dailyManifest);
+
+  // If a specific targetCode was requested, finished loading, and no manifest resolved, flag error state
+  const hasUnresolvedManifest = Boolean(targetCode && !isLoading && !activeManifest);
+  const showErrorScreen = fetchError || hasUnresolvedManifest;
+
+  // Derive active van items, prioritizing snapshot from activeManifest so newly added revision items render accurately
+  const activeVanItems = useMemo(() => {
+    const rawItems = (activeManifest?.items && activeManifest.items.length > 0)
+      ? activeManifest.items
+      : vanStock.filter((v) => v.quantity > 0);
+
+    return rawItems.map((item) => {
+      const isChecked = localItemChecks[item.id] !== undefined
+        ? localItemChecks[item.id]
+        : Boolean(item.repChecked);
+      return {
+        ...item,
+        repChecked: isChecked,
+      };
+    });
+  }, [activeManifest, vanStock, localItemChecks]);
 
   const verifiedCount = useMemo(
     () => activeVanItems.filter((i) => i.repChecked).length,
@@ -124,68 +268,192 @@ export default function VanStockShareView() {
     : currentDate;
 
   const ownerSignature =
-    (isHistorical && activeManifest?.ownerSignatureData) ||
-    ownerSignatureData ||
+    activeManifest?.ownerSignatureData ||
     dailyManifest?.ownerSignatureData ||
+    ownerSignatureData ||
     DEFAULT_OWNER_SIGNATURE;
 
-  const repSignature = isHistorical
-    ? activeManifest?.repSignatureData
-    : dailyManifest?.repSignatureData;
+  const repSignature =
+    activeManifest?.repSignatureData ||
+    dailyManifest?.repSignatureData ||
+    null;
 
-  const repSignerName = isHistorical
-    ? (activeManifest?.repSignedBy || activeManifest?.repName || vehicle.repName)
-    : (dailyManifest?.repSignedBy || vehicle.repName);
+  const repSignerName =
+    activeManifest?.repSignedBy ||
+    dailyManifest?.repSignedBy ||
+    activeManifest?.repName ||
+    vehicle.repName ||
+    'Kamal Perera';
 
-  const repSignedAt = isHistorical
-    ? activeManifest?.repSignedAt
-    : dailyManifest?.repSignedAt;
+  const repSignedAt =
+    activeManifest?.repSignedAt ||
+    dailyManifest?.repSignedAt ||
+    null;
 
   const handleAttachSignature = async ({ signatureData, signerName }) => {
     if (isHistorical) {
-      toast.info(`Manifest ${activeManifest.manifestNo} is an archived historical record.`);
+      toast.info(`Manifest ${activeManifest?.manifestNo} is an archived historical record.`);
       return;
     }
+
+    // Validate signature data URL length before allowing API submission
+    if (!signatureData || typeof signatureData !== 'string' || signatureData.trim().length < 500) {
+      toast.warning('Please provide a valid signature.');
+      return;
+    }
+
     const manifestCode = activeManifest?.manifestNo || targetCode;
+    const itemsSnapshot = activeVanItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) }));
+    const unchecked = activeVanItems.filter((item) => !item.repChecked).length;
+
     if (manifestCode) {
       try {
-        await vanStockApi.verifyPublicManifest(manifestCode, {
+        await vanStockApi.signPublicManifest(manifestCode, {
           signatureData,
+          repSignature: signatureData,
+          signature: signatureData,
           repName: signerName,
-          items: activeVanItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
+          items: itemsSnapshot,
         });
       } catch (err) {
-        console.warn('Public manifest remote verification error:', err);
+        console.warn('signPublicManifest fallback to verifyPublicManifest:', err);
+        try {
+          await vanStockApi.verifyPublicManifest(manifestCode, {
+            signatureData,
+            repSignature: signatureData,
+            signature: signatureData,
+            repName: signerName,
+            items: itemsSnapshot,
+          });
+        } catch (innerErr) {
+          console.warn('Public manifest remote verification error:', innerErr);
+        }
       }
     }
-    // Derive unchecked items count directly from current active view items
-    const uncheckedCount = activeVanItems.filter((item) => !item.repChecked).length;
+
     await submitRepVerificationWithSignature({
       signatureData,
       repName: signerName,
+      manifestNo: manifestCode,
     });
-    if (uncheckedCount === 0) {
+
+    // Update remoteManifest state immediately so the rep's signature renders live without reload
+    setRemoteManifest((prev) =>
+      prev
+        ? {
+            ...prev,
+            repSignatureData: signatureData,
+            repSignature: signatureData,
+            repSignedBy: signerName,
+            repSignedAt: new Date().toISOString(),
+            status: unchecked === 0 ? 'REP_ACCEPTED' : 'PARTIAL_DISCREPANCY',
+            uncheckedCount: unchecked,
+          }
+        : prev
+    );
+
+    if (unchecked === 0) {
       toast.success('Manifest successfully signed and fully verified.');
     } else {
-      toast.warning(`Manifest signed with ${uncheckedCount} unchecked item(s) flagged as discrepancy.`);
+      toast.warning(`Manifest signed with ${unchecked} unchecked item(s) flagged as discrepancy.`);
     }
   };
 
   const handleToggleCheck = (itemId) => {
     if (isHistorical) {
-      toast.info(`Manifest ${activeManifest.manifestNo} is an archived historical record.`);
+      toast.info(`Manifest ${activeManifest?.manifestNo} is an archived historical record.`);
       return;
     }
-    toggleRepItemChecked(itemId);
+    const numId = Number(itemId);
+    setLocalItemChecks((prev) => {
+      const currentVal = prev[numId] !== undefined
+        ? prev[numId]
+        : Boolean(activeVanItems.find((i) => i.id === numId)?.repChecked);
+      return {
+        ...prev,
+        [numId]: !currentVal,
+      };
+    });
+    toggleRepItemChecked(numId);
   };
 
   const handleToggleAll = () => {
     if (isHistorical) {
-      toast.info(`Manifest ${activeManifest.manifestNo} is an archived historical record.`);
+      toast.info(`Manifest ${activeManifest?.manifestNo} is an archived historical record.`);
       return;
     }
-    toggleAllRepItemsChecked(!allVerified);
+    const targetVal = !allVerified;
+    const newChecks = {};
+    activeVanItems.forEach((i) => {
+      newChecks[i.id] = targetVal;
+    });
+    setLocalItemChecks(newChecks);
+    toggleAllRepItemsChecked(targetVal);
   };
+
+  // ── 1. Clean Mobile Loading State ──
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-accent-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Loading Delivery Van Manifest...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 2. Fallback UI Screen for 404/500/Missing Manifest ──
+  if (showErrorScreen) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center p-4 pb-safe">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-rose-200 dark:border-rose-900/60 shadow-xl p-6 sm:p-8 text-center space-y-5">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-800/80 flex items-center justify-center text-rose-600 dark:text-rose-400 shadow-sm">
+            <AlertCircle size={36} strokeWidth={2.2} />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+              Manifest Not Found or Link Invalid
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              {errorMessage || 'Manifest Not Found or Link Invalid. Please verify the link with your warehouse dispatcher.'}
+            </p>
+          </div>
+
+          {targetCode && (
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-700 dark:text-slate-300">
+              <span className="text-slate-400 font-sans font-medium text-[11px]">Requested:</span>
+              <span className="font-bold">{targetCode}</span>
+            </div>
+          )}
+
+          <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent-600 hover:bg-accent-700 active:scale-95 text-white font-semibold text-xs transition-all shadow-sm cursor-pointer"
+            >
+              <RotateCcw size={14} />
+              <span>Retry Link</span>
+            </button>
+            <a
+              href="/share/van-manifest"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs transition-all border border-slate-200 dark:border-slate-700"
+            >
+              <span>View Today&apos;s Manifest</span>
+            </a>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 dark:text-slate-500">
+            Liyanage Distributors &bull; Deiyandara Warehouse Dispatch System
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-safe">
@@ -219,7 +487,7 @@ export default function VanStockShareView() {
 
           <div className="text-right flex items-center gap-1.5">
             {isHistorical && (
-              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 font-mono text-[10px] font-bold">
+              <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-400 dark:text-amber-950 dark:border-amber-500 font-mono text-[10px] font-extrabold shadow-sm">
                 Archived
               </span>
             )}
@@ -292,13 +560,13 @@ export default function VanStockShareView() {
               <h3 className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
                 {isHistorical
                   ? `Archived Manifest Record (${activeManifest?.status || 'VERIFIED'})`
-                  : dailyManifest?.status === 'PARTIAL_DISCREPANCY'
-                  ? `Partial Discrepancy Active (${dailyManifest.uncheckedCount || uncheckedCount} Unchecked)`
-                  : allVerified && dailyManifest?.repSignatureData
+                  : (activeManifest?.status || dailyManifest?.status) === 'PARTIAL_DISCREPANCY'
+                  ? `Partial Discrepancy Active (${activeManifest?.uncheckedCount || dailyManifest?.uncheckedCount || uncheckedCount} Unchecked)`
+                  : allVerified && (activeManifest?.repSignatureData || dailyManifest?.repSignatureData)
                   ? 'Manifest Signed & Fully Verified'
                   : uncheckedCount > 0
                   ? `${uncheckedCount} Line Item${uncheckedCount === 1 ? '' : 's'} Pending Check`
-                  : 'All Items Counted â€” Ready to Sign'}
+                  : 'All Items Counted — Ready to Sign'}
               </h3>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 dark:bg-slate-800 dark:text-slate-200">
                 Rev #{activeManifest?.manifestRevision || 1}
@@ -318,7 +586,7 @@ export default function VanStockShareView() {
             >
               <PenTool size={13} />
               <span>
-                {dailyManifest?.repSignatureData
+                {activeManifest?.repSignatureData || dailyManifest?.repSignatureData
                   ? 'Update Signature'
                   : uncheckedCount > 0
                   ? `Sign Manifest (${verifiedCount}/${activeVanItems.length})`
@@ -326,8 +594,8 @@ export default function VanStockShareView() {
               </span>
             </button>
           ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-xs font-bold">
-              <ShieldCheck size={14} className="text-emerald-600" />
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-400 text-amber-950 dark:text-amber-950 border border-amber-300 dark:border-amber-500 text-xs font-bold shadow-sm">
+              <ShieldCheck size={14} className="text-amber-800 dark:text-amber-900" />
               <span>Archived Record</span>
             </div>
           )}
@@ -396,25 +664,25 @@ export default function VanStockShareView() {
                     <span
                       className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                         isDiscrepancy
-                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300'
+                          ? 'bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-400 dark:text-rose-950 dark:border-rose-500'
                           : isChecked
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-400 dark:text-emerald-950 dark:border-emerald-500'
+                          : 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-400 dark:text-amber-950 dark:border-amber-500'
                       }`}
                     >
                       {isDiscrepancy ? (
                         <>
-                          <AlertTriangle size={11} className="text-rose-600" />
+                          <AlertTriangle size={11} className="text-rose-700 dark:text-rose-950" />
                           <span>Discrepancy</span>
                         </>
                       ) : isChecked ? (
                         <>
-                          <CheckCircle2 size={11} />
+                          <CheckCircle2 size={11} className="text-emerald-700 dark:text-emerald-950" />
                           <span>Verified</span>
                         </>
                       ) : (
                         <>
-                          <Clock size={11} />
+                          <Clock size={11} className="text-amber-700 dark:text-amber-950" />
                           <span>Pending</span>
                         </>
                       )}
@@ -451,15 +719,16 @@ export default function VanStockShareView() {
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Warehouse Dispatcher Signature
               </span>
-              <div className="h-14 flex items-center justify-center bg-slate-50 dark:bg-slate-950 rounded-xl p-1 border border-dashed border-gray-200 dark:border-slate-800">
+              {/* Dispatcher Signature with solid bright container for dark theme contrast */}
+              <div className="h-14 flex items-center justify-center bg-white dark:bg-slate-100 rounded-xl p-1 border border-dashed border-gray-200 dark:border-slate-300 shadow-xs">
                 {ownerSignature ? (
                   <img
                     src={ownerSignature}
                     alt="Owner Signature"
-                    className="h-12 max-w-[140px] object-contain filter dark:invert-0"
+                    className="h-12 max-w-[140px] object-contain"
                   />
                 ) : (
-                  <span className="text-[10px] text-slate-400 italic">Pre-Signed on File</span>
+                  <span className="text-[10px] text-slate-500 italic">Pre-Signed on File</span>
                 )}
               </div>
               <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
@@ -470,25 +739,25 @@ export default function VanStockShareView() {
               </p>
             </div>
 
-            {/* Rep Signature */}
+            {/* Rep Signature with solid bright container for dark theme contrast */}
             <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-sm space-y-2">
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Sales Representative Signature
               </span>
-              <div className="h-14 flex items-center justify-center bg-slate-50 dark:bg-slate-950 rounded-xl p-1 border border-dashed border-gray-200 dark:border-slate-800">
+              <div className="h-14 flex items-center justify-center bg-white dark:bg-slate-100 rounded-xl p-1 border border-dashed border-gray-200 dark:border-slate-300 shadow-xs">
                 {repSignature ? (
                   <img
                     src={repSignature}
                     alt="Representative Signature"
-                    className="h-12 max-w-[140px] object-contain filter dark:invert-0"
+                    className="h-12 max-w-[140px] object-contain"
                   />
                 ) : isHistorical ? (
-                  <span className="text-[10px] text-slate-400 italic">No signature on file</span>
+                  <span className="text-[10px] text-slate-500 italic">No signature on file</span>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setIsSignatureModalOpen(true)}
-                    className="text-xs font-bold text-accent-600 dark:text-accent-400 hover:underline cursor-pointer flex items-center gap-1"
+                    className="text-xs font-bold text-accent-700 hover:underline cursor-pointer flex items-center gap-1"
                   >
                     <PenTool size={12} />
                     <span>Tap to Sign Pad</span>
@@ -521,8 +790,8 @@ export default function VanStockShareView() {
         isOpen={isSignatureModalOpen}
         onClose={() => setIsSignatureModalOpen(false)}
         onSave={handleAttachSignature}
-        defaultSignerName={vehicle.repName || 'Kamal Perera'}
-        vehicleId={vehicle.id}
+        defaultSignerName={repSignerName || vehicle.repName || 'Kamal Perera'}
+        vehicleId={activeManifest?.vehicleId || vehicle.id}
         manifestNo={activeManifest?.manifestNo || dailyManifest?.manifestNo || 'MAN-20261105-01'}
         uncheckedCount={uncheckedCount}
         totalCount={activeVanItems.length}

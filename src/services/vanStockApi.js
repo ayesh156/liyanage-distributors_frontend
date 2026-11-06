@@ -41,6 +41,15 @@ export const vanStockApi = {
     return await api.post('/warehouse/owner-signature', payload);
   },
 
+  // ── Vehicle Profile & Physical Image Storage APIs ──
+  async getVehicleProfile(vehicleId = 'VAN-01') {
+    return await api.get('/settings/vehicle', { vehicleId });
+  },
+
+  async saveVehicleProfile(payload) {
+    return await api.post('/settings/vehicle', payload);
+  },
+
   // ── Van Stock Subsystem APIs ──
   async getVanInventory(vehicleId = 'VAN-01') {
     return await api.get('/van-stock', { vehicleId });
@@ -107,13 +116,17 @@ export const vanStockApi = {
     return await api.post('/manifests/verify-rep', payload);
   },
 
-  // ── Public WhatsApp Zero-Login Verification APIs ──
+  // ── Public WhatsApp Zero-Login Verification & Signing APIs ──
   async getPublicManifestShare(manifestNo) {
     return await api.get(`/manifests/share/${manifestNo}`);
   },
 
   async verifyPublicManifest(manifestNo, payload) {
     return await api.post(`/manifests/share/${manifestNo}/verify`, payload);
+  },
+
+  async signPublicManifest(manifestNo, payload) {
+    return await api.put(`/manifests/share/${manifestNo}/sign`, payload);
   },
 };
 

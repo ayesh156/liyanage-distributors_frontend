@@ -31,8 +31,9 @@ import {
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
 import { usersApi } from '../../services/api';
+import vanStockApi from '../../services/vanStockApi';
 import useVanStockStore from '../../hooks/useVanStockStore';
-import { compressImageToDataUrl } from '../../utils/imageCompression';
+import { compressImageToDataUrl, resolveServerImageUrl } from '../../utils/imageCompression';
 import SearchableSelect from '../ui/SearchableSelect';
 
 /**
@@ -112,6 +113,21 @@ export default function SettingsManager() {
     }
   }, [vehicle]);
 
+  // Cross-browser backend vehicle profile hydration on mount (ensures cross-browser viewing without relying on localStorage)
+  useEffect(() => {
+    vanStockApi.getVehicleProfile('VAN-01')
+      .then((res) => {
+        if (res?.data) {
+          updateVehicleProfile(res.data);
+          setVehicleForm((prev) => ({
+            ...prev,
+            ...res.data,
+          }));
+        }
+      })
+      .catch((_err) => {});
+  }, [updateVehicleProfile]);
+
   /**
    * Processes and downscales selected image file via Canvas compression,
    * then immediately persists it into vehicleForm and Zustand store.
@@ -163,7 +179,8 @@ export default function SettingsManager() {
   };
 
   /**
-   * Saves updated vehicle profile attributes to the Zustand store & local storage.
+   * Saves updated vehicle profile attributes to backend filesystem storage,
+   * Zustand store, and local storage. Converts Base64 images to physical files on the server.
    */
   const handleVehicleSubmit = async (e) => {
     e.preventDefault();
@@ -174,14 +191,28 @@ export default function SettingsManager() {
 
     setIsSavingVehicle(true);
     try {
-      const saved = updateVehicleProfile({
+      const payload = {
         id: vehicleForm.id.trim(),
         plateNumber: vehicleForm.plateNumber.trim(),
         driver: vehicleForm.driver.trim(),
         route: 'All Routes',
         warehouseLocation: vehicleForm.warehouseLocation,
         vehicleImage: vehicleForm.vehicleImage,
-      });
+      };
+
+      // Optimistic local state update
+      let saved = updateVehicleProfile(payload);
+
+      // Persist to backend: converts Base64 image to physical binary file in public/images/van/
+      try {
+        const backendRes = await vanStockApi.saveVehicleProfile(payload);
+        if (backendRes?.success && backendRes?.data) {
+          saved = updateVehicleProfile(backendRes.data);
+        }
+      } catch (backendErr) {
+        console.warn('Backend vehicle image persist failed, fallback to local state:', backendErr);
+      }
+
       if (saved) {
         setVehicleForm((prev) => ({
           ...prev,
@@ -1161,7 +1192,7 @@ export default function SettingsManager() {
                   {vehicleForm.vehicleImage ? (
                     <div className="relative w-full h-full">
                       <img
-                        src={vehicleForm.vehicleImage}
+                        src={resolveServerImageUrl(vehicleForm.vehicleImage)}
                         alt={vehicleForm.plateNumber}
                         className="w-full h-full object-cover"
                       />

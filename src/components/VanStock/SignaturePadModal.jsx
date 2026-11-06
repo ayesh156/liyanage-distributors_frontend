@@ -28,6 +28,7 @@ export default function SignaturePadModal({
   totalCount = 0,
 }) {
   const canvasRef = useRef(null);
+  const isDrawingRef = useRef(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
   const [signerName, setSignerName] = useState(defaultSignerName);
@@ -56,23 +57,41 @@ export default function SignaturePadModal({
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isOpen]);
 
-  // Setup Retina Canvas
+  // Setup Retina Canvas with dimensions preservation
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
+    const targetWidth = Math.round(rect.width * dpr);
+    const targetHeight = Math.round(rect.height * dpr);
 
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      // Save existing drawing snapshot if present before resizing
+      let prevImage = null;
+      if (canvas.width > 0 && canvas.height > 0) {
+        prevImage = canvas.toDataURL('image/png');
+      }
 
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#0f172a'; // Official dark document ink
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#0f172a'; // Official dark document navy/black ink
+
+      if (prevImage) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        };
+        img.src = prevImage;
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -86,41 +105,103 @@ export default function SignaturePadModal({
     }
   }, [isOpen, setupCanvas]);
 
-  // Coordinates helper
-  const getCoordinates = (e) => {
+  // Native Non-Passive Touch Event Binding for Bulletproof Mobile Touch Drawing
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !isOpen) return;
+
+    const handleTouchStart = (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0] || e.changedTouches[0];
+      if (!touch) return;
+
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      isDrawingRef.current = true;
+      setIsDrawing(true);
+      setHasDrawn(true);
+    };
+
+    const handleTouchMove = (e) => {
+      e.preventDefault();
+      if (!isDrawingRef.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0] || e.changedTouches[0];
+      if (!touch) return;
+
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    };
+
+    const handleTouchEnd = (e) => {
+      e.preventDefault();
+      if (isDrawingRef.current) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.closePath();
+        isDrawingRef.current = false;
+        setIsDrawing(false);
+
+        // Capture and validate stroke Base64 payload on touch release
+        const dataUrl = canvas.toDataURL('image/png');
+        if (dataUrl && dataUrl.length > 500) {
+          setHasDrawn(true);
+        }
+      }
+    };
+
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [isOpen]);
+
+  // Mouse fallback coordinates helper
+  const getMouseCoordinates = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-
-    if (e.touches && e.touches.length > 0) {
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
-      };
-    }
     return {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
   };
 
-  const startDrawing = (e) => {
+  const startMouseDrawing = (e) => {
     e.preventDefault();
-    const { x, y } = getCoordinates(e);
+    const { x, y } = getMouseCoordinates(e);
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
 
     ctx.beginPath();
     ctx.moveTo(x, y);
+    isDrawingRef.current = true;
     setIsDrawing(true);
     setHasDrawn(true);
   };
 
-  const draw = (e) => {
-    if (!isDrawing) return;
+  const drawMouse = (e) => {
+    if (!isDrawingRef.current) return;
     e.preventDefault();
-    const { x, y } = getCoordinates(e);
+    const { x, y } = getMouseCoordinates(e);
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -129,13 +210,19 @@ export default function SignaturePadModal({
     ctx.stroke();
   };
 
-  const stopDrawing = (e) => {
-    if (isDrawing) {
+  const stopMouseDrawing = (e) => {
+    if (isDrawingRef.current) {
       e?.preventDefault();
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
       if (ctx) ctx.closePath();
+      isDrawingRef.current = false;
       setIsDrawing(false);
+
+      const dataUrl = canvas.toDataURL('image/png');
+      if (dataUrl && dataUrl.length > 500) {
+        setHasDrawn(true);
+      }
     }
   };
 
@@ -145,27 +232,33 @@ export default function SignaturePadModal({
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    isDrawingRef.current = false;
+    setIsDrawing(false);
     setHasDrawn(false);
   };
 
   const handleSave = () => {
-    if (!hasDrawn) {
-      toast.warning('Please provide a handwritten signature on the canvas pad before confirming.');
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Export signature as clean PNG data URL
+    const signatureDataUrl = canvas.toDataURL('image/png');
+
+    // Strict validation: Reject empty canvas or transparent blocks (< 500 bytes)
+    if (!hasDrawn || !signatureDataUrl || signatureDataUrl.length < 500) {
+      toast.warning('Please provide a valid signature.');
       return;
     }
+
     if (!signerName.trim()) {
       toast.warning('Representative signer name is required.');
       return;
     }
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Export signature as clean transparent/crisp PNG data URL
-    const signatureDataUrl = canvas.toDataURL('image/png');
-
     onSave?.({
       signatureData: signatureDataUrl,
+      repSignature: signatureDataUrl,
+      signature: signatureDataUrl,
       signerName: signerName.trim(),
       timestamp: new Date().toISOString(),
     });
@@ -260,38 +353,37 @@ export default function SignaturePadModal({
               </button>
             </div>
 
-            <div className="relative rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-700 bg-[#f8fafc] dark:bg-slate-950 overflow-hidden shadow-inner">
+            {/* Canvas Signature Pad Container - Solid bright background retained in Dark Theme */}
+            <div className="relative rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-500 bg-white dark:bg-white overflow-hidden shadow-inner">
               <canvas
                 ref={canvasRef}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing}
-                onTouchMove={draw}
-                onTouchEnd={stopDrawing}
-                className="w-full h-44 sm:h-52 cursor-crosshair touch-none block"
+                onMouseDown={startMouseDrawing}
+                onMouseMove={drawMouse}
+                onMouseUp={stopMouseDrawing}
+                onMouseLeave={stopMouseDrawing}
+                style={{ touchAction: 'none' }}
+                className="w-full h-44 sm:h-52 cursor-crosshair touch-none block bg-white"
               />
 
               {!hasDrawn && (
-                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 select-none">
-                  <PenTool className="w-8 h-8 mb-1.5 opacity-30 animate-bounce" />
-                  <span className="text-xs font-medium">Draw signature here</span>
-                  <span className="text-[10px] text-slate-400/80">
+                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-slate-400 select-none">
+                  <PenTool className="w-8 h-8 mb-1.5 opacity-40 animate-bounce" />
+                  <span className="text-xs font-semibold">Draw signature here</span>
+                  <span className="text-[10px] text-slate-400/90">
                     Signing certifies custodial responsibility for all loaded stock
                   </span>
                 </div>
               )}
 
               {/* Watermark baseline */}
-              <div className="absolute bottom-6 left-8 right-8 border-b border-gray-200 dark:border-slate-800 pointer-events-none" />
+              <div className="absolute bottom-6 left-8 right-8 border-b border-gray-300 pointer-events-none" />
             </div>
           </div>
 
-          {/* Verification Status Feedback Banner */}
+          {/* Verification Status Feedback Banner with High-Contrast Dark Mode Styling */}
           {uncheckedCount > 0 ? (
-            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-[11px] text-amber-900 dark:text-amber-200 leading-relaxed flex items-start gap-2.5">
-              <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-400 border border-amber-300 dark:border-amber-500 text-[11px] text-amber-900 dark:text-amber-950 leading-relaxed flex items-start gap-2.5 shadow-sm">
+              <AlertCircle size={16} className="text-amber-700 dark:text-amber-950 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold">Partial Discrepancy Notice</p>
                 <p className="mt-0.5">

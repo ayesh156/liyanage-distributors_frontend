@@ -73,3 +73,32 @@ export function compressImageToDataUrl(file, maxWidth = 600, maxHeight = 600, qu
   });
 }
 
+/**
+ * Resolves a vehicle or receipt image path to a clean absolute URL relative to the backend server.
+ * Ensures the frontend requests the image without 'public/' in the path (e.g. http://localhost:5000/images/van/van_active.jpg).
+ *
+ * @param {string|null|undefined} imagePath - Relative image path (e.g. /images/van/van_active.jpg) or Data URL
+ * @returns {string|null} Resolved absolute image URL or Data URL
+ */
+export function resolveServerImageUrl(imagePath) {
+  if (!imagePath || typeof imagePath !== 'string') return null;
+
+  // 1. Data URLs (Base64) or fully-qualified external URLs are returned untouched
+  if (imagePath.startsWith('data:') || /^https?:\/\//i.test(imagePath)) {
+    return imagePath;
+  }
+
+  // 2. Strip any accidental 'public/' folder references
+  let cleanPath = imagePath.replace(/^\/?public\//i, '/');
+  if (!cleanPath.startsWith('/')) {
+    cleanPath = `/${cleanPath}`;
+  }
+
+  // 3. Resolve backend server root origin (supports VITE_API_URL or VITE_API_BASE_URL)
+  const apiBase = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_API_URL || import.meta.env?.VITE_API_BASE_URL))
+    || 'http://localhost:5000/api';
+  const serverOrigin = apiBase.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+
+  return `${serverOrigin}${cleanPath}`;
+}
+

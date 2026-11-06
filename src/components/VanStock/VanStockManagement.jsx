@@ -68,6 +68,7 @@ import DateFilterBar from './DateFilterBar';
 import useAppStore from '../../hooks/useAppStore';
 import useVanStockStore from '../../hooks/useVanStockStore';
 import { openWhatsAppChat, formatSriLankanWhatsAppNumber } from '../../utils/whatsapp';
+import { resolveServerImageUrl } from '../../utils/imageCompression';
 import {
   calcNetUnitPrice,
   calcTotalRealValue,
@@ -392,7 +393,8 @@ export default function VanStockManagement() {
       dailyManifest?.manifestNo ||
       `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
     const shareUrl = `${window.location.origin}/share/van-manifest/${manifestCode}`;
-    const message = `ðŸ“¦ Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
+    // Clean text template without emojis to prevent device-specific Mojibake and encoding corruption
+    const message = `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
 
     // Always copy link to clipboard for convenience
     try {
@@ -427,8 +429,8 @@ export default function VanStockManagement() {
 
   // Discrepancy items computation: dynamically reflects current items and manifest status
   const uncheckedByRepItems = useMemo(() => {
-    // If manifest is fully verified, zero discrepancy items exist
-    if (dailyManifest?.status === 'FULLY_VERIFIED') return [];
+    // If manifest is fully verified / rep accepted, zero discrepancy items exist
+    if (dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED') return [];
     return vanStock.filter(
       (i) => i.quantity > 0 && (i.status === 'UNVERIFIED_BY_REP' || i.discrepancyFlag || (!i.repChecked && dailyManifest?.status === 'PARTIAL_DISCREPANCY'))
     );
@@ -437,7 +439,12 @@ export default function VanStockManagement() {
 
   // Dynamic pending confirmation count reflecting current items & manifest status (cleared once signed/verified)
   const pendingConfirmationCount = useMemo(() => {
-    if (dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'PARTIAL_DISCREPANCY') return 0;
+    if (
+      dailyManifest?.status === 'FULLY_VERIFIED' ||
+      dailyManifest?.status === 'REP_ACCEPTED' ||
+      dailyManifest?.status === 'VERIFIED' ||
+      dailyManifest?.status === 'PARTIAL_DISCREPANCY'
+    ) return 0;
     return vanStock.filter(
       (i) => i.quantity > 0 && i.isActive !== false && (i.status === 'PENDING_CONFIRMATION' && !i.repChecked)
     ).length;
@@ -508,7 +515,7 @@ export default function VanStockManagement() {
             <div className="w-16 h-16 sm:w-16 sm:h-16 rounded-2xl bg-orange-50 text-orange-600 border border-orange-200 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800/50 flex items-center justify-center shadow-inner flex-shrink-0 overflow-hidden">
               {vehicle?.vehicleImage ? (
                 <img
-                  src={vehicle.vehicleImage}
+                  src={resolveServerImageUrl(vehicle.vehicleImage)}
                   alt={vehicle.plateNumber || vehicle.id}
                   className="w-full h-full object-cover"
                 />
@@ -539,7 +546,7 @@ export default function VanStockManagement() {
                     <Lock size={11} /> Owner Signed & Dispatched
                   </span>
                 )}
-                {(dailyManifest?.status === 'VERIFIED' || dailyManifest?.status === 'FULLY_VERIFIED') && (
+                {(dailyManifest?.status === 'VERIFIED' || dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED') && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-1">
                     <CheckCircle2 size={11} /> Rep Tablet Accepted
                   </span>
@@ -1052,7 +1059,9 @@ export default function VanStockManagement() {
                       const product = products.find((p) => p.id === item.productId);
                       const netPrice = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
                       const totalVal = calcTotalRealValue(netPrice, item.quantity);
-                      const isApproved = item.status === 'APPROVED' || (dailyManifest?.status === 'FULLY_VERIFIED' && item.quantity > 0);
+                      const isApproved =
+                        item.status === 'APPROVED' ||
+                        ((dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED') && item.quantity > 0);
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
@@ -1169,7 +1178,9 @@ export default function VanStockManagement() {
                   const product = products.find((p) => p.id === item.productId);
                   const netPrice = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
                   const totalVal = calcTotalRealValue(netPrice, item.quantity);
-                  const isApproved = item.status === 'APPROVED' || (dailyManifest?.status === 'FULLY_VERIFIED' && item.quantity > 0);
+                  const isApproved =
+                    item.status === 'APPROVED' ||
+                    ((dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED') && item.quantity > 0);
 
                   return (
                     <div key={item.id} className="p-4 space-y-2.5">

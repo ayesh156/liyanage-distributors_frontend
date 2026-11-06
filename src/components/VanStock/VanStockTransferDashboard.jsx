@@ -126,7 +126,8 @@ export default function VanStockTransferDashboard() {
       dailyManifest?.manifestNo ||
       `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
     const shareUrl = `${window.location.origin}/share/van-manifest/${manifestCode}`;
-    const message = `📦 Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
+    // Clean text template without emojis to prevent device-specific Mojibake and encoding corruption
+    const message = `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
 
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -266,7 +267,8 @@ export default function VanStockTransferDashboard() {
       dailyManifest?.manifestNo ||
       `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
     const shareUrl = `${window.location.origin}/share/van-manifest/${manifestCode}`;
-    const message = `📦 Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
+    // Clean text template without emojis to prevent device-specific Mojibake and encoding corruption
+    const message = `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
 
     // Always copy link to clipboard for quick multi-channel access
     try {

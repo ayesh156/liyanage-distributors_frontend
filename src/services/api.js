@@ -16,6 +16,49 @@ export function setToastHandler(handler) {
   _toastHandler = handler;
 }
 
+// ── Auth error toast throttle & suppression guard ──────────────────────────
+let _lastAuthToastTimestamp = 0;
+const AUTH_TOAST_THROTTLE_MS = 4000;
+
+/**
+ * Checks whether an authentication error toast should be suppressed:
+ * 1. Suppresses completely if user is already situated on / navigating to /login or /share/van-manifest.
+ * 2. Debounces and throttles consecutive auth error toasts within 4s to silence toast storms.
+ */
+function shouldSuppressAuthToast() {
+  if (typeof window === 'undefined') return true;
+  if (
+    window.location.pathname.includes('/login') ||
+    window.location.pathname.includes('/share/van-manifest') ||
+    window.location.pathname.includes('/share/')
+  ) {
+    return true;
+  }
+
+  const now = Date.now();
+  if (now - _lastAuthToastTimestamp < AUTH_TOAST_THROTTLE_MS) {
+    return true;
+  }
+  _lastAuthToastTimestamp = now;
+  return false;
+}
+
+const PUBLIC_API_PREFIXES = ['/auth/login', '/health', '/manifests/share', '/share/'];
+
+/**
+ * Identifies public endpoints that must bypass token validation and omit Authorization headers.
+ * Includes /manifests/share/* and any URL containing /share/.
+ */
+function isPublicEndpoint(endpoint) {
+  if (!endpoint) return false;
+  return (
+    endpoint.includes('/share/') ||
+    endpoint.includes('/share/van-manifest') ||
+    endpoint.includes('/manifests/share') ||
+    PUBLIC_API_PREFIXES.some((prefix) => endpoint.startsWith(prefix))
+  );
+}
+
 function showToast(message, type = 'error', duration = 4000) {
   if (_toastHandler) {
     _toastHandler(message, type, duration);
@@ -86,11 +129,29 @@ async function request(endpoint, options = {}) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const isPublic = isPublicEndpoint(endpoint);
     const authToken = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+
+    // Halt unauthenticated requests to protected endpoints, but strictly bypass for public routes
+    if (!authToken && !isPublic) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_user');
+        if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/share/')) {
+          window.location.href = '/login';
+        }
+      }
+      if (!shouldSuppressAuthToast()) {
+        showToast('Access denied. No token provided.');
+      }
+      throw new ApiError('Access denied. No token provided.', 401, { error: 'Access denied. No token provided.' });
+    }
+
     const config = {
       headers: {
         'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        // DO NOT attach Authorization header for public endpoints or if token missing
+        ...(!isPublic && authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...options.headers,
       },
       credentials: 'include',
@@ -124,9 +185,25 @@ async function request(endpoint, options = {}) {
       }
       const errMsg = data?.error || data?.message || `Request failed with status ${response.status}`;
       const apiError = new ApiError(errMsg, response.status, data);
-      if (!isGatewayOffline) {
+
+      // Handle 401/403 authorization failures
+      const isAuthError = response.status === 401 || response.status === 403;
+      if (isAuthError) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('auth_token');
+          sessionStorage.removeItem('auth_user');
+          if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/share/')) {
+            window.location.href = '/login';
+          }
+        }
+        // Suppress toast storm on redirection, login screen, or public share routes
+        if (!shouldSuppressAuthToast()) {
+          showToast(errMsg);
+        }
+      } else if (!isGatewayOffline) {
         showToast(errMsg);
       }
+
       throw apiError;
     }
 
