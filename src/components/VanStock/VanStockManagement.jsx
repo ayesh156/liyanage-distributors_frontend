@@ -226,7 +226,7 @@ export default function VanStockManagement() {
   // FILTERED TAB DATASETS (WITH DATE-RANGE & SEARCHABLE LOGIC)
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // Filtered On-Hand Van Stock
+  // Filtered On-Hand Van Stock (Perpetual Inventory: displays all SKUs where quantity > 0 disregarding dates)
   const filteredVanStock = useMemo(() => {
     return vanStock.filter((item) => {
       if (item.quantity <= 0) return false;
@@ -243,12 +243,9 @@ export default function VanStockManagement() {
       const matchApproval =
         vanApprovalFilter === 'ALL' || item.status === vanApprovalFilter;
 
-      const dateToCheck = item.loadedAt || item.confirmedAt || '2026-11-05T08:00:00Z';
-      const matchDate = isDateInPreset(dateToCheck, datePreset, customStart, customEnd);
-
-      return matchSearch && matchCategory && matchApproval && matchDate;
+      return matchSearch && matchCategory && matchApproval;
     });
-  }, [vanStock, products, searchQuery, categoryFilter, vanApprovalFilter, datePreset, customStart, customEnd]);
+  }, [vanStock, products, searchQuery, categoryFilter, vanApprovalFilter]);
 
   // Filtered Restock Requirements
   const filteredRestockItems = useMemo(() => {
@@ -983,8 +980,8 @@ export default function VanStockManagement() {
           </div>
         </div>
 
-        {/* Unified Date Preset Filter Bar (Tabs: on-hand, damaged, movements) */}
-        {(activeTab === 'on-hand' || activeTab === 'damaged' || activeTab === 'movements') && (
+        {/* Unified Date Preset Filter Bar (Tabs: damaged, movements strictly - Decoupled from On-Hand Perpetual Inventory) */}
+        {(activeTab === 'damaged' || activeTab === 'movements') && (
           <DateFilterBar
             selectedPreset={datePreset}
             onPresetChange={setDatePreset}
@@ -993,16 +990,12 @@ export default function VanStockManagement() {
             customEnd={customEnd}
             onCustomEndChange={setCustomEnd}
             resultCount={
-              activeTab === 'on-hand'
-                ? filteredVanStock.length
-                : activeTab === 'damaged'
+              activeTab === 'damaged'
                 ? filteredDamagedGoods.length
                 : filteredMovements.length
             }
             label={
-              activeTab === 'on-hand'
-                ? 'Van Loading Date Filter'
-                : activeTab === 'damaged'
+              activeTab === 'damaged'
                 ? 'Quarantine Date Filter'
                 : 'Movement Timestamp Filter'
             }
