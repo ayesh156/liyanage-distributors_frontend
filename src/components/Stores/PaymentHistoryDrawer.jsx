@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Receipt, CalendarDays, Banknote, CreditCard, Building2, FileText, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, Receipt, CalendarDays, Banknote, CreditCard, Building2, FileText, Trash2, AlertTriangle, Loader2, User, Hash } from 'lucide-react';
 import { formatDateYMD } from '../../utils/date';
 import { normalizeInvoiceNo } from '../../utils/invoiceDisplay';
 import useAppStore from '../../hooks/useAppStore';
@@ -118,26 +118,45 @@ export default function PaymentHistoryDrawer({ isOpen, onClose, invoice }) {
                 .map((payment) => {
                   const Icon = MODE_ICON[payment.paymentMode] || Receipt;
 
-                  // ── Multi-property description fallback ────────────────
-                  // Exhaustively probe every key the API response shape may use
-                  // so that backend-generated descriptions like "Payment collected
-                  // for 2341" survive re-hydration without being silently dropped.
+                  // ── Metadata Resolution (Cheque, Bank, Reference, Notes, Collector) ──
+                  const refNumber = (
+                    payment.chequeNo ||
+                    payment.chequeNumber ||
+                    payment.referenceNo ||
+                    payment.refNo ||
+                    ''
+                  ).trim();
+
+                  const bankName = (payment.bankName || payment.bank || '').trim();
+                  const branchName = (payment.branchName || payment.branch || '').trim();
+                  const bankDisplay = bankName && branchName
+                    ? `${bankName} (${branchName})`
+                    : bankName || branchName;
+
+                  const collectorName = (
+                    payment.recordedBy ||
+                    payment.collectedBy ||
+                    payment.salesPerson ||
+                    invoice?.salesPerson ||
+                    ''
+                  ).trim();
+
                   const textPayload = (
+                    payment.notes ||
                     payment.description ||
                     payment.amountPaidDescription ||
                     payment.desc ||
-                    payment.notes ||
                     payment.paymentDescription ||
                     payment.reason ||
                     payment.msg ||
-                    ""
+                    ''
                   ).trim();
 
                   return (
                     <div key={payment.id} className="px-5 py-4 hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors group">
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 flex-1 min-w-0">
-                          <div className={`p-2 rounded-lg shrink-0 ${
+                          <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
                             payment.paymentMode === 'cash' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' :
                             payment.paymentMode === 'cheque' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
                             payment.paymentMode === 'check' ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' :
@@ -145,14 +164,15 @@ export default function PaymentHistoryDrawer({ isOpen, onClose, invoice }) {
                             payment.paymentMode === 'bank_transfer' ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' :
                             'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                           }`}>
-                            <Icon size={16} />
+                            <Icon size={18} />
                           </div>
                           <div className="min-w-0 flex-1">
+                            {/* Primary Row: Amount + Method Badge */}
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium text-gray-900 dark:text-slate-100">
+                              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                                 {formatCurrency(payment.amount)}
                               </span>
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${
+                              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md shrink-0 ${
                                 payment.paymentMode === 'cash' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
                                 payment.paymentMode === 'cheque' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
                                 payment.paymentMode === 'check' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' :
@@ -163,20 +183,52 @@ export default function PaymentHistoryDrawer({ isOpen, onClose, invoice }) {
                                 {MODE_LABEL[payment.paymentMode] || payment.paymentMode}
                               </span>
                             </div>
-                            <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              <span className="flex items-center gap-1">
-                                <CalendarDays size={10} />
+
+                            {/* Secondary Row: Metadata Chips (Date, Cheque/Ref, Bank/Branch, Collector) */}
+                            <div className="flex items-center gap-x-3 gap-y-1.5 mt-2 text-[11px] text-gray-600 dark:text-slate-400 flex-wrap">
+                              {/* Date */}
+                              <span className="flex items-center gap-1 font-medium text-gray-700 dark:text-slate-300">
+                                <CalendarDays size={12} className="text-gray-400 dark:text-slate-500 shrink-0" />
                                 {formatDate(payment.date)}
                               </span>
-                              {payment.chequeNo && payment.paymentMode !== 'bank_transfer' && (
-                                <span className="font-mono">{payment.chequeNo}</span>
+
+                              {/* Cheque No / Reference No */}
+                              {refNumber && (
+                                <span className="flex items-center gap-1 font-mono bg-gray-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded text-gray-800 dark:text-slate-200">
+                                  <Hash size={11} className="text-gray-400 dark:text-slate-500 shrink-0" />
+                                  <span>
+                                    {payment.paymentMode === 'bank_transfer' || payment.paymentMode === 'bank_slip'
+                                      ? `Ref: ${refNumber}`
+                                      : payment.paymentMode === 'cash'
+                                      ? `Receipt: ${refNumber}`
+                                      : `Chq: ${refNumber}`}
+                                  </span>
+                                </span>
+                              )}
+
+                              {/* Bank Name & Branch */}
+                              {bankDisplay && (
+                                <span className="flex items-center gap-1 text-gray-700 dark:text-slate-300">
+                                  <Building2 size={12} className="text-gray-400 dark:text-slate-500 shrink-0" />
+                                  <span>{bankDisplay}</span>
+                                </span>
+                              )}
+
+                              {/* Collector / User Stamp */}
+                              {collectorName && (
+                                <span className="flex items-center gap-1 text-gray-700 dark:text-slate-300">
+                                  <User size={12} className="text-gray-400 dark:text-slate-500 shrink-0" />
+                                  <span>{collectorName}</span>
+                                </span>
                               )}
                             </div>
-                            {/* ── Multi-line description with 2-line clamp ── */}
-                            {textPayload.trim() && (
-                              <p className="line-clamp-2 break-words text-xs text-gray-500 font-normal dark:text-slate-400 mt-1 block whitespace-normal leading-relaxed">
-                                {textPayload}
-                              </p>
+
+                            {/* Internal Notes / Remarks Callout */}
+                            {textPayload && (
+                              <div className="flex items-start gap-1.5 mt-2 bg-gray-50 dark:bg-slate-700/40 p-2 rounded-lg border border-gray-200/60 dark:border-slate-700/60 text-xs text-gray-600 dark:text-slate-300">
+                                <FileText size={13} className="text-gray-400 dark:text-slate-500 shrink-0 mt-0.5" />
+                                <span className="break-words leading-relaxed">{textPayload}</span>
+                              </div>
                             )}
                           </div>
                         </div>

@@ -228,21 +228,21 @@ export function mapInvoiceFromApi(backendInvoice) {
     salesPersonPhone: backendInvoice.salesPerson?.phone || '',
     route: backendInvoice.store?.route?.name || '',
     shopName: backendInvoice.store?.name || '',
-    payments: (backendInvoice.payments || []).map(mapPaymentFromApi),
+    payments: (backendInvoice.payments || []).map((p) => mapPaymentFromApi(p, backendInvoice)),
   };
 }
 
 /**
  * Map backend Payment to frontend payment shape embedded in invoices.
- * Backend Payment: { id, date, amountPaid, description, paymentMethod, chequeNo }
- * Frontend expects: { id, date, amount, paymentMode, chequeNo, bankName, description }
+ * Backend Payment: { id, date, amountPaid, description, paymentMethod, chequeNo, bankName, branchName }
+ * Frontend expects: { id, date, amount, paymentMode, chequeNo, chequeNumber, referenceNo, bankName, branchName, description, notes, recordedBy, collectedBy }
  *
  * ══════════════════════════════════════════════════════════════════════════════
  * CRITICAL: Payment.id is a UUID string in Prisma (String @id @default(uuid())).
  * Preserve as-is — do NOT parseInt() which would corrupt the UUID.
  * ══════════════════════════════════════════════════════════════════════════════
  */
-export function mapPaymentFromApi(backendPayment) {
+export function mapPaymentFromApi(backendPayment, parentInvoice = null) {
   // Trust the payment method from backend - do NOT override based on bank field presence
   const derivedPaymentMode = normalizePaymentMode(
     backendPayment.paymentMethod ||
@@ -250,16 +250,30 @@ export function mapPaymentFromApi(backendPayment) {
     ''
   );
 
+  const resolvedChequeNo = backendPayment.chequeNo || backendPayment.chequeNumber || backendPayment.referenceNo || '';
+  const resolvedNotes = backendPayment.description || backendPayment.notes || '';
+  const resolvedRecordedBy =
+    backendPayment.recordedBy ||
+    backendPayment.collectedBy ||
+    (typeof parentInvoice?.salesPerson === 'object' && parentInvoice?.salesPerson !== null ? parentInvoice.salesPerson.name : null) ||
+    (typeof parentInvoice?.salesPerson === 'string' ? parentInvoice.salesPerson : '') ||
+    '';
+
   return {
     id: backendPayment.id,
     date: toIsoDateOnly(backendPayment.date, ''),
-    amount: Number(backendPayment.amountPaid),
+    amount: Number(backendPayment.amountPaid ?? backendPayment.amount ?? 0),
     paymentMode: derivedPaymentMode || 'cash',
     paymentMethod: resolvePaymentSelector(backendPayment),
-    chequeNo: backendPayment.chequeNo || '',
+    chequeNo: resolvedChequeNo,
+    chequeNumber: resolvedChequeNo,
+    referenceNo: backendPayment.referenceNo || resolvedChequeNo,
     bankName: backendPayment.bankName || '',
     branchName: backendPayment.branchName || '',
-    description: backendPayment.description || '',
+    description: resolvedNotes,
+    notes: resolvedNotes,
+    recordedBy: resolvedRecordedBy,
+    collectedBy: resolvedRecordedBy,
   };
 }
 
