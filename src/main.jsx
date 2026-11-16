@@ -26,36 +26,51 @@ window.addEventListener('error', (e) => {
 }, true);
 
 // ── Graceful Service Worker Registration ('Zero-Reinstall') ────────
-// Registers sw.js with background cache invalidation. Does not force
-// reload active tabs; allows smooth transition on subsequent navigation.
-if ('serviceWorker' in navigator && !window.location.hostname.includes('localhost.disabled')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        // Check for worker updates in the background
-        registration.addEventListener('updatefound', () => {
-          const installingWorker = registration.installing;
-          if (!installingWorker) return;
+// Registers sw.js with background cache invalidation in production only.
+// In local development (Vite HMR), prevents service workers from intercepting
+// dynamic module chunks, eliminating stale chunk collisions and duplicate React instances.
+if ('serviceWorker' in navigator) {
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => {
+          // Check for worker updates in the background
+          registration.addEventListener('updatefound', () => {
+            const installingWorker = registration.installing;
+            if (!installingWorker) return;
 
-          installingWorker.addEventListener('statechange', () => {
-            if (
-              installingWorker.state === 'installed' &&
-              navigator.serviceWorker.controller
-            ) {
-              console.log(
-                '[PWA] New build cached in background. Ready for next session without forced reload.'
-              );
-              sessionStorage.setItem('lhdd_pwa_update_pending', 'true');
-              window.dispatchEvent(new CustomEvent('pwa-update-available'));
-            }
+            installingWorker.addEventListener('statechange', () => {
+              if (
+                installingWorker.state === 'installed' &&
+                navigator.serviceWorker.controller
+              ) {
+                console.log(
+                  '[PWA] New build cached in background. Ready for next session without forced reload.'
+                );
+                sessionStorage.setItem('lhdd_pwa_update_pending', 'true');
+                window.dispatchEvent(new CustomEvent('pwa-update-available'));
+              }
+            });
           });
+        })
+        .catch((err) => {
+          console.warn('[PWA] Service Worker registration failed:', err);
         });
-      })
-      .catch((err) => {
-        console.warn('[PWA] Service Worker registration failed:', err);
+    });
+  } else {
+    // Development mode: unregister any lingering service workers and flush cache
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister();
+      }
+    });
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((key) => caches.delete(key));
       });
-  });
+    }
+  }
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

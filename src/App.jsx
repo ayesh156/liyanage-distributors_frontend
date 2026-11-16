@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
@@ -13,9 +13,7 @@ import SalesPersonManager from './components/SalesPersons/SalesPersonManager';
 import SettingsManager from './components/Settings/SettingsManager';
 import WarehouseManagement from './components/Warehouse/WarehouseManagement';
 import VanStockManagement from './components/VanStock/VanStockManagement';
-import VanStockTransferDashboard from './components/VanStock/VanStockTransferDashboard';
 import VanStockRepView from './components/VanStock/VanStockRepView';
-import VanStockShareView from './components/VanStock/VanStockShareView';
 import OfflineSentinel from './components/ui/OfflineSentinel';
 import { useAuth } from './context/AuthContext';
 import useAppStore from './hooks/useAppStore';
@@ -215,26 +213,20 @@ export default function App() {
               <Route path="stores/:id" element={<StoresView />} />
               {/* Field Van Stock & Multi-Location Subsystem Admin Routes */}
               <Route path="van-stock" element={<VanStockManagement />} />
-              <Route path="van-stock/transfer" element={<VanStockTransferDashboard />} />
-              <Route path="van-stock/confirm/:vanId" element={<VanStockRepView />} />
+              <Route path="van-stock/transfer" element={<Navigate to="/warehouse" replace />} />
+              <Route path="van-stock/confirm/:vanId" element={<Navigate to="/van-stock" replace />} />
               <Route path="sales-persons" element={<SalesPersonsView />} />
               <Route path="routes" element={<RoutesView />} />
               <Route path="full-report" element={<ReportView />} />
               <Route path="settings" element={<SettingsView />} />
               <Route path="settings/users" element={<SettingsView />} />
             </Route>
-            {/* Standalone Zero-Login Public Manifest Routes outside admin sidebar chrome */}
-            <Route path="/share/van-manifest" element={<VanStockShareView />} />
-            <Route path="/share/van-manifest/:manifestNo" element={<VanStockShareView />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HydrationGate>
       ) : (
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          {/* Standalone Zero-Login Public Manifest Routes accessible without login */}
-          <Route path="/share/van-manifest" element={<VanStockShareView />} />
-          <Route path="/share/van-manifest/:manifestNo" element={<VanStockShareView />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       )}

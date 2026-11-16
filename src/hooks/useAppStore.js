@@ -8,6 +8,7 @@ import {
   salesPersonsApi,
   dashboardApi,
   outstandingApi,
+  categoriesApi,
   setToastHandler,
   withPagination,
 } from '../services/api';
@@ -226,19 +227,24 @@ function applyInvoiceMutation(state, nextInvoices) {
 async function fetchAllData() {
   try {
     // Fetch all data in parallel with generous limits for full dataset
-    const [storesRes, invoicesRes, salesPersonsRes, routesRes, summaryRes, analyticsRes] = await Promise.all([
+    const [storesRes, invoicesRes, salesPersonsRes, routesRes, summaryRes, analyticsRes, categoriesRes] = await Promise.all([
       storesApi.list(withPagination({}, 1, 500)),       // high limit to get all stores
       invoicesApi.list(withPagination({}, 1, 2000)),     // high limit for full invoice dataset
       salesPersonsApi.list(withPagination({}, 1, 200)),
       routesApi.list(withPagination({}, 1, 300)),
       invoicesApi.summary(),
       dashboardApi.analytics(),
+      categoriesApi.list().catch((err) => {
+        console.warn('⚠️ Could not fetch categories during fetchAllData:', err.message);
+        return { data: [] };
+      }),
     ]);
 
     const mappedStores = extractData(storesRes).map(mapStoreFromApi);
     const mappedInvoices = extractData(invoicesRes).map(mapInvoiceFromApi);
     const mappedSalesPersons = extractData(salesPersonsRes).map(mapSalesPersonFromApi);
     const mappedRoutes = extractData(routesRes).map(mapRouteFromApi);
+    const mappedCategories = extractData(categoriesRes) || categoriesRes?.data || [];
 
     const storesPagination = extractPagination(storesRes);
     const invoicesPagination = extractPagination(invoicesRes);
@@ -248,6 +254,7 @@ async function fetchAllData() {
       invoices: mappedInvoices,
       salesPersons: mappedSalesPersons,
       routes: mappedRoutes,
+      categories: mappedCategories,
       storesPagination,
       invoicesPagination,
       summary: summaryRes?.data || summaryRes,
@@ -289,6 +296,9 @@ const useAppStore = create((set, get) => {
 
     // Sales Persons
     salesPersons: [],
+
+    // Dynamic Hardware Categories (synced from DB)
+    categories: [],
 
     // Pagination metadata
     storesPagination: { page: 1, limit: 15, totalPages: 0, totalCount: 0 },
@@ -343,6 +353,7 @@ const useAppStore = create((set, get) => {
             salesPersons: result.salesPersons,
             routes: result.routes,
             routeNames: getRouteNames(result.routes),
+            categories: result.categories || [],
             storesPagination: result.storesPagination,
             invoicesPagination: result.invoicesPagination,
             liveData: true,
@@ -564,6 +575,19 @@ const useAppStore = create((set, get) => {
           const newPersons = state.salesPersons.filter((p) => p.id !== id);
           return { ...state, salesPersons: newPersons };
         });
+      }
+    },
+
+    // ── Dynamic Hardware Categories Actions ───────────────────────────
+    fetchCategories: async () => {
+      try {
+        const res = await categoriesApi.list();
+        const data = extractData(res) || res?.data || [];
+        set({ categories: data });
+        return data;
+      } catch (err) {
+        console.warn('⚠️ Could not fetch categories from API:', err?.message);
+        return [];
       }
     },
 

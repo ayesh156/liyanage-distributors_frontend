@@ -58,11 +58,11 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
 
   const modalContent = (
     <div className="fixed inset-0 z-[100] flex flex-col bg-slate-900/80 backdrop-blur-md overflow-y-auto print:bg-white print:p-0">
-      {/* Top action bar â€” hidden during print */}
+      {/* Top action bar - hidden during print */}
       <div className="no-print sticky top-0 z-10 flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 shadow-md">
         <div className="flex items-center gap-2">
           <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
-            Daily Van Manifest ({manifestDocNo}) {manifestRev > 1 ? `â€¢ Rev #${manifestRev}` : ''}
+            Daily Van Manifest ({manifestDocNo}) {manifestRev > 1 ? `* Rev #${manifestRev}` : ''}
           </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
@@ -86,14 +86,14 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
         </div>
       </div>
 
-      {/* A4 Sheet Viewport Container â€” Natural Scrollbar-Free Strict A4 Viewport */}
+      {/* A4 Sheet Viewport Container - Natural Scrollbar-Free Strict A4 Viewport */}
       <div className="flex-1 flex justify-center py-2 sm:py-3 px-2 sm:px-4 print:p-0 print:m-0 print:w-full print:max-w-full">
         <div
           id="van-stock-manifest-sheet"
           className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 py-6 sm:py-8 px-4 sm:px-6 shadow-xl rounded-xl print:shadow-none print:rounded-none print:m-0 print:py-4 print:px-[6mm] print:w-full print:max-w-full text-xs overflow-visible"
           style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}
         >
-          {/* Header â€” Stationery Branding */}
+          {/* Header - Stationery Branding */}
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
             <div className="flex items-center gap-3.5">
               <img
@@ -112,7 +112,7 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
                   Hardware & Electrical Goods Wholesaler & Regional Distributor
                 </p>
                 <p className="text-[10px] text-slate-500">
-                  Hakmana Road, Deiyandara, Southern Province, Sri Lanka â€¢ Tel: 041-2268123 / 077-1112233
+                  Hakmana Road, Deiyandara, Southern Province, Sri Lanka * Tel: 041-2268123 / 077-1112233
                 </p>
               </div>
             </div>
@@ -133,7 +133,7 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Vehicle & Dispatch Metadata Grid â€” Eco White Paper Design */}
+          {/* Vehicle & Dispatch Metadata Grid - Eco White Paper Design */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3 p-2.5 rounded-lg bg-white border border-slate-300 text-[11px]">
             <div>
               <span className="text-[9px] uppercase text-slate-500 block font-semibold">Vehicle ID / Truck</span>
@@ -153,7 +153,7 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Itemized Table â€” Executive Low-Ink Proportions with Explicit Colgroup (100% Total Width Allocation) */}
+          {/* Itemized Table - Executive Low-Ink Proportions with Explicit Colgroup (100% Total Width Allocation) */}
           <table className="table-fixed w-full border-collapse my-3 text-left">
             <colgroup>
               <col style={{ width: '4%' }} />
@@ -249,12 +249,7 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
             </tfoot>
           </table>
 
-          {/* Verification Legal Notice â€” Minimal Border */}
-          <div className="p-2.5 my-3 rounded border border-slate-300 bg-transparent text-[9.5px] text-slate-700 leading-relaxed">
-            <strong>Dispatcher & Field Representative Acknowledgement:</strong> By signing below, the Warehouse Dispatcher certifies that physical quantities itemized above were inspected and loaded into vehicle {vehicle.plateNumber}. The Sales Representative accepts custodial responsibility for all loaded stock and agrees to account for sales invoices, undamaged returns, and quarantined defective goods.
-          </div>
-
-          {/* Dual Signature Blocks â€” Eco Alignment with Crisp Wet-Ink Renders */}
+          {/* Dual Signature Blocks - Eco Alignment with Crisp Wet-Ink Renders */}
           <div className="grid grid-cols-2 gap-8 pt-4 mt-4 border-t border-slate-300">
             {/* Owner / Dispatcher Signature Block */}
             <div className="text-center flex flex-col items-center">

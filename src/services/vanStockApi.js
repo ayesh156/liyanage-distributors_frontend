@@ -41,6 +41,23 @@ export const vanStockApi = {
     return await api.post('/warehouse/owner-signature', payload);
   },
 
+  // ── Dynamic Hardware Categories APIs ──
+  async getCategories() {
+    return await api.get('/warehouse/categories');
+  },
+
+  async createCategory(payload) {
+    return await api.post('/warehouse/categories', payload);
+  },
+
+  async updateCategory(id, payload) {
+    return await api.put(`/warehouse/categories/${id}`, payload);
+  },
+
+  async deleteCategory(id) {
+    return await api.delete(`/warehouse/categories/${id}`);
+  },
+
   // ── Vehicle Profile & Physical Image Storage APIs ──
   async getVehicleProfile(vehicleId = 'VAN-01') {
     return await api.get('/settings/vehicle', { vehicleId });
@@ -100,8 +117,10 @@ export const vanStockApi = {
   },
 
   // ── Daily Delivery Manifest APIs ──
-  async getDailyManifest(vehicleId = 'VAN-01') {
-    return await api.get('/manifests/daily', { vehicleId });
+  async getDailyManifest(vehicleId = 'VAN-01', date = null) {
+    const params = { vehicleId };
+    if (date) params.date = date;
+    return await api.get('/manifests/daily', params);
   },
 
   async getManifestHistory(vehicleId = 'VAN-01') {
@@ -116,17 +135,29 @@ export const vanStockApi = {
     return await api.post('/manifests/verify-rep', payload);
   },
 
-  // ── Public WhatsApp Zero-Login Verification & Signing APIs ──
-  async getPublicManifestShare(manifestNo) {
-    return await api.get(`/manifests/share/${manifestNo}`);
+  async saveEveningChecks(payload) {
+    return await api.post('/manifests/reconcile-evening', payload);
   },
 
-  async verifyPublicManifest(manifestNo, payload) {
-    return await api.post(`/manifests/share/${manifestNo}/verify`, payload);
+  async reconcileEvening(payload) {
+    return await api.post('/manifests/reconcile-evening', payload);
   },
 
-  async signPublicManifest(manifestNo, payload) {
-    return await api.put(`/manifests/share/${manifestNo}/sign`, payload);
+  async toggleItemCheck(payload) {
+    try {
+      return await api.post('/manifests/toggle-item-check', payload);
+    } catch (err) {
+      return await api.post('/van-stock/check', payload);
+    }
+  },
+
+  // ── Unified In-App Saved Signatures APIs ──
+  async getSavedSignatures(repId) {
+    return await api.get('/manifests/saved-signatures', repId ? { repId } : {});
+  },
+
+  async saveSignature(payload) {
+    return await api.post('/manifests/saved-signatures', payload);
   },
 };
 

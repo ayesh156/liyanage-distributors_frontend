@@ -70,6 +70,21 @@ function loadPersistedState() {
 }
 
 /**
+ * Utility helper to format a Date or ISO string into local YYYY-MM-DD operating date string.
+ */
+export function getOperatingDateStr(date = new Date()) {
+  const d = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  if (!d || isNaN(d.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Safely writes state snapshot to localStorage.
  */
 function persistState(state) {
@@ -88,6 +103,8 @@ function persistState(state) {
       manifestHistory: state.manifestHistory,
       ownerSignatureData: state.ownerSignatureData,
       ownerSignerName: state.ownerSignerName,
+      morningCheckedByDate: state.morningCheckedByDate,
+      eveningReconciledByDate: state.eveningReconciledByDate,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     if (state.vehicle) {
@@ -124,12 +141,19 @@ export const useVanStockStore = create((set, get) => ({
   damagedGoods: persisted?.damagedGoods || [],
   stockMovements: persisted?.stockMovements || [],
   offlineQueue: persisted?.offlineQueue || [],
+  categories: [],
   dailyManifest: persisted?.dailyManifest || DEFAULT_DAILY_MANIFEST,
   manifestHistory: persisted?.manifestHistory || [],
   ownerSignatureData: persisted?.ownerSignatureData || DEFAULT_OWNER_SIGNATURE,
   ownerSignerName: persisted?.ownerSignerName || 'W. Liyanage (Managing Director / Owner)',
+  savedOwnerSignature: null,
+  savedRepSignature: null,
 
-  // â”€â”€ UI Filter & Navigation State â”€â”€
+  // Date-Bound Checklist State Maps (Keyed strictly by "[date]_[itemId]")
+  morningCheckedByDate: persisted?.morningCheckedByDate || {},
+  eveningReconciledByDate: persisted?.eveningReconciledByDate || {},
+
+  // -- UI Filter & Navigation State --
   activeTab: 'on-hand',
   searchQuery: '',
   categoryFilter: 'ALL',
@@ -162,7 +186,117 @@ export const useVanStockStore = create((set, get) => ({
     return null;
   },
 
-  // â”€â”€ Setters â”€â”€
+  // ── Date-Bound Checklist State Readers & Manifest Bindings ──
+  isItemMorningChecked: (itemOrId, dateStr) => {
+    if (!dateStr) return false;
+    const pid = typeof itemOrId === 'object' && itemOrId !== null
+      ? (itemOrId.productId || itemOrId.id)
+      : itemOrId;
+    const sku = typeof itemOrId === 'object' && itemOrId !== null ? itemOrId.sku : null;
+    const { morningCheckedByDate = {} } = get();
+    const keyWithPid = `${dateStr}_${pid}`;
+    if (morningCheckedByDate[keyWithPid] !== undefined) {
+      return morningCheckedByDate[keyWithPid] === true;
+    }
+    if (sku && morningCheckedByDate[`${dateStr}_${sku}`] !== undefined) {
+      return morningCheckedByDate[`${dateStr}_${sku}`] === true;
+    }
+    if (typeof itemOrId === 'object' && itemOrId?.id) {
+      const legacyKey = `${dateStr}_${itemOrId.id}`;
+      if (morningCheckedByDate[legacyKey] !== undefined) {
+        return morningCheckedByDate[legacyKey] === true;
+      }
+    }
+    const manifest = get().getManifestForDate ? get().getManifestForDate(dateStr) : null;
+    if (manifest?.morningCheckedItems) {
+      const raw = manifest.morningCheckedItems;
+      const list = Array.isArray(raw) ? raw.map(String) : (typeof raw === 'object' ? Object.keys(raw) : []);
+      if (
+        (sku && list.includes(String(sku))) ||
+        (pid && list.includes(String(pid))) ||
+        (itemOrId?.id && list.includes(String(itemOrId.id)))
+      ) {
+        return true;
+      }
+    }
+    const isManifestVerified = manifest && (manifest.status === 'FULLY_VERIFIED' || manifest.status === 'REP_ACCEPTED' || manifest.status === 'VERIFIED');
+    if (isManifestVerified && Array.isArray(manifest.itemsSnapshot)) {
+      const snap = manifest.itemsSnapshot.find(
+        (s) => (pid && (s.productId === Number(pid) || s.productId === pid)) ||
+               (sku && s.sku === sku) ||
+               (itemOrId?.id && s.id === Number(itemOrId.id)) ||
+               (s.id === Number(pid))
+      );
+      if (snap && snap.repChecked !== undefined) {
+        return snap.repChecked === true;
+      }
+    }
+    return false;
+  },
+
+  isItemEveningChecked: (itemOrId, dateStr) => {
+    if (!dateStr) return false;
+    const pid = typeof itemOrId === 'object' && itemOrId !== null
+      ? (itemOrId.productId || itemOrId.id)
+      : itemOrId;
+    const sku = typeof itemOrId === 'object' && itemOrId !== null ? itemOrId.sku : null;
+    const { eveningReconciledByDate = {} } = get();
+    const keyWithPid = `${dateStr}_${pid}`;
+    if (eveningReconciledByDate[keyWithPid] !== undefined) {
+      return eveningReconciledByDate[keyWithPid] === true;
+    }
+    if (sku && eveningReconciledByDate[`${dateStr}_${sku}`] !== undefined) {
+      return eveningReconciledByDate[`${dateStr}_${sku}`] === true;
+    }
+    if (typeof itemOrId === 'object' && itemOrId?.id) {
+      const legacyKey = `${dateStr}_${itemOrId.id}`;
+      if (eveningReconciledByDate[legacyKey] !== undefined) {
+        return eveningReconciledByDate[legacyKey] === true;
+      }
+    }
+    const manifest = get().getManifestForDate ? get().getManifestForDate(dateStr) : null;
+    if (manifest?.eveningCheckedItems) {
+      const raw = manifest.eveningCheckedItems;
+      const list = Array.isArray(raw) ? raw.map(String) : (typeof raw === 'object' ? Object.keys(raw) : []);
+      if (
+        (sku && list.includes(String(sku))) ||
+        (pid && list.includes(String(pid))) ||
+        (itemOrId?.id && list.includes(String(itemOrId.id)))
+      ) {
+        return true;
+      }
+    }
+    const isManifestVerified = manifest && (manifest.status === 'FULLY_VERIFIED' || manifest.status === 'REP_ACCEPTED' || manifest.status === 'VERIFIED');
+    if (isManifestVerified && Array.isArray(manifest.itemsSnapshot)) {
+      const snap = manifest.itemsSnapshot.find(
+        (s) => (pid && (s.productId === Number(pid) || s.productId === pid)) ||
+               (sku && s.sku === sku) ||
+               (itemOrId?.id && s.id === Number(itemOrId.id)) ||
+               (s.id === Number(pid))
+      );
+      if (snap && snap.eveningReconciled !== undefined) {
+        return snap.eveningReconciled === true;
+      }
+    }
+    return false;
+  },
+
+  getManifestForDate: (dateStr) => {
+    const opDate = dateStr || getOperatingDateStr();
+    const { dailyManifest, manifestHistory = [] } = get();
+    const getMDate = (m) => {
+      if (!m) return null;
+      return getOperatingDateStr(m.manifestDate || m.createdAt);
+    };
+    if (getMDate(dailyManifest) === opDate) {
+      return dailyManifest;
+    }
+    const found = manifestHistory.find((m) => getMDate(m) === opDate);
+    if (found) return found;
+    return null;
+  },
+
+  // -- Setters --
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setCategoryFilter: (category) => set({ categoryFilter: category }),
@@ -199,7 +333,7 @@ export const useVanStockStore = create((set, get) => ({
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(updated));
       }
-    } catch (_e) {}
+    } catch (_e) { }
     return updated;
   },
 
@@ -209,13 +343,14 @@ export const useVanStockStore = create((set, get) => ({
   fetchInitialData: async (vehicleId = 'VAN-01') => {
     try {
       set({ isSyncing: true });
-      const [invRes, catRes, dmgRes, manRes, histRes, sigRes] = await Promise.allSettled([
+      const [invRes, catRes, dmgRes, manRes, histRes, sigRes, dynCatRes] = await Promise.allSettled([
         vanStockApi.getVanInventory(vehicleId),
         vanStockApi.getWarehouseCatalog(),
         vanStockApi.getDamagedGoods(),
         vanStockApi.getDailyManifest(vehicleId),
         vanStockApi.getManifestHistory(vehicleId),
         vanStockApi.getOwnerSignature(),
+        vanStockApi.getCategories(),
       ]);
 
       const updates = {};
@@ -300,10 +435,63 @@ export const useVanStockStore = create((set, get) => ({
             discrepancyFlag: false,
           }));
         }
+
+        if (manRes.value.data.itemsSnapshot && Array.isArray(manRes.value.data.itemsSnapshot)) {
+          const manDate = getOperatingDateStr(manRes.value.data.manifestDate || manRes.value.data.createdAt);
+          const currentMorning = { ...(get().morningCheckedByDate || {}) };
+          const currentEvening = { ...(get().eveningReconciledByDate || {}) };
+          manRes.value.data.itemsSnapshot.forEach((s) => {
+            if (s && (s.id || s.productId)) {
+              const pid = s.productId || s.id;
+              const wasMorningChecked = Boolean(s.repChecked && (isSigned || s.repCheckedAt));
+              const wasEveningReconciled = Boolean(s.eveningReconciled && (isSigned || s.eveningReconciledAt));
+              if (wasMorningChecked) {
+                currentMorning[`${manDate}_${pid}`] = true;
+                if (s.id) currentMorning[`${manDate}_${s.id}`] = true;
+              } else if (!isSigned && !s.repCheckedAt) {
+                delete currentMorning[`${manDate}_${pid}`];
+                if (s.id) delete currentMorning[`${manDate}_${s.id}`];
+              }
+              if (wasEveningReconciled) {
+                currentEvening[`${manDate}_${pid}`] = true;
+                if (s.id) currentEvening[`${manDate}_${s.id}`] = true;
+              } else if (!isSigned && !s.eveningReconciledAt) {
+                delete currentEvening[`${manDate}_${pid}`];
+                if (s.id) delete currentEvening[`${manDate}_${s.id}`];
+              }
+            }
+          });
+          updates.morningCheckedByDate = currentMorning;
+          updates.eveningReconciledByDate = currentEvening;
+        }
       }
 
       if (histRes.status === 'fulfilled' && histRes.value?.success && histRes.value.data) {
         updates.manifestHistory = histRes.value.data;
+        if (Array.isArray(histRes.value.data)) {
+          const currentMorning = updates.morningCheckedByDate || { ...(get().morningCheckedByDate || {}) };
+          const currentEvening = updates.eveningReconciledByDate || { ...(get().eveningReconciledByDate || {}) };
+          histRes.value.data.forEach((m) => {
+            const mDate = getOperatingDateStr(m.manifestDate || m.createdAt);
+            if (m.itemsSnapshot && Array.isArray(m.itemsSnapshot)) {
+              m.itemsSnapshot.forEach((s) => {
+                if (s && (s.id || s.productId)) {
+                  const pid = s.productId || s.id;
+                  if (s.repChecked !== undefined) {
+                    currentMorning[`${mDate}_${pid}`] = Boolean(s.repChecked);
+                    if (s.id) currentMorning[`${mDate}_${s.id}`] = Boolean(s.repChecked);
+                  }
+                  if (s.eveningReconciled !== undefined) {
+                    currentEvening[`${mDate}_${pid}`] = Boolean(s.eveningReconciled);
+                    if (s.id) currentEvening[`${mDate}_${s.id}`] = Boolean(s.eveningReconciled);
+                  }
+                }
+              });
+            }
+          });
+          updates.morningCheckedByDate = currentMorning;
+          updates.eveningReconciledByDate = currentEvening;
+        }
       }
 
       if (sigRes.status === 'fulfilled' && sigRes.value?.success && sigRes.value.data) {
@@ -315,12 +503,131 @@ export const useVanStockStore = create((set, get) => ({
         }
       }
 
+      if (dynCatRes.status === 'fulfilled' && dynCatRes.value?.success && dynCatRes.value.data) {
+        updates.categories = dynCatRes.value.data;
+      }
+
       set({ ...updates, isSyncing: false, isHydrated: true });
       persistState(get());
     } catch (err) {
       console.warn('Initial fetch for van stock store failed (using offline cache):', err);
       set({ isSyncing: false });
     }
+  },
+
+  /**
+   * Action: Fetch & Bind Daily Manifest for a specific operating date.
+   * Hydrates date-bound checklist maps and ensures UI strictly displays the requested date's manifest.
+   */
+  fetchDailyManifest: async (vehicleId = 'VAN-01', dateStr) => {
+    try {
+      const opDate = dateStr || getOperatingDateStr();
+      const res = await vanStockApi.getDailyManifest(vehicleId, opDate);
+      if (res?.success && res.data) {
+        const manifest = res.data;
+        const currentMorning = { ...(get().morningCheckedByDate || {}) };
+        const currentEvening = { ...(get().eveningReconciledByDate || {}) };
+        const { vanStock = [] } = get();
+
+        // 1. Hydrate morningCheckedItems strictly from database
+        const rawMorning = manifest.morningCheckedItems;
+        const morningList = Array.isArray(rawMorning)
+          ? rawMorning.map(String)
+          : (rawMorning && typeof rawMorning === 'object' ? Object.keys(rawMorning).filter((k) => Boolean(rawMorning[k])) : []);
+
+        if (morningList.length > 0) {
+          morningList.forEach((ident) => {
+            currentMorning[`${opDate}_${ident}`] = true;
+          });
+          vanStock.forEach((item) => {
+            const matches =
+              morningList.includes(String(item.sku)) ||
+              morningList.includes(String(item.productId)) ||
+              morningList.includes(String(item.id));
+            if (matches) {
+              if (item.productId) currentMorning[`${opDate}_${item.productId}`] = true;
+              if (item.id) currentMorning[`${opDate}_${item.id}`] = true;
+              if (item.sku) currentMorning[`${opDate}_${item.sku}`] = true;
+            }
+          });
+        }
+
+        // 2. Hydrate eveningCheckedItems strictly from database
+        const rawEvening = manifest.eveningCheckedItems;
+        const eveningList = Array.isArray(rawEvening)
+          ? rawEvening.map(String)
+          : (rawEvening && typeof rawEvening === 'object' ? Object.keys(rawEvening).filter((k) => Boolean(rawEvening[k])) : []);
+
+        if (eveningList.length > 0) {
+          eveningList.forEach((ident) => {
+            currentEvening[`${opDate}_${ident}`] = true;
+          });
+          vanStock.forEach((item) => {
+            const matches =
+              eveningList.includes(String(item.sku)) ||
+              eveningList.includes(String(item.productId)) ||
+              eveningList.includes(String(item.id));
+            if (matches) {
+              if (item.productId) currentEvening[`${opDate}_${item.productId}`] = true;
+              if (item.id) currentEvening[`${opDate}_${item.id}`] = true;
+              if (item.sku) currentEvening[`${opDate}_${item.sku}`] = true;
+            }
+          });
+        }
+
+        // 3. Fallback / supplement from itemsSnapshot
+        if (manifest.itemsSnapshot && Array.isArray(manifest.itemsSnapshot)) {
+          const isSigned = manifest.status === 'REP_ACCEPTED' || manifest.status === 'FULLY_VERIFIED' || manifest.status === 'VERIFIED';
+          manifest.itemsSnapshot.forEach((s) => {
+            if (s && (s.id || s.productId)) {
+              const pid = s.productId || s.id;
+              const wasMorningChecked = Boolean(s.repChecked && (isSigned || s.repCheckedAt));
+              const wasEveningReconciled = Boolean(s.eveningReconciled && (isSigned || s.eveningReconciledAt));
+              if (wasMorningChecked) {
+                currentMorning[`${opDate}_${pid}`] = true;
+                if (s.id) currentMorning[`${opDate}_${s.id}`] = true;
+                if (s.sku) currentMorning[`${opDate}_${s.sku}`] = true;
+              } else if (!isSigned && !s.repCheckedAt && morningList.length === 0) {
+                delete currentMorning[`${opDate}_${pid}`];
+                if (s.id) delete currentMorning[`${opDate}_${s.id}`];
+              }
+              if (wasEveningReconciled) {
+                currentEvening[`${opDate}_${pid}`] = true;
+                if (s.id) currentEvening[`${opDate}_${s.id}`] = true;
+                if (s.sku) currentEvening[`${opDate}_${s.sku}`] = true;
+              } else if (!isSigned && !s.eveningReconciledAt && eveningList.length === 0) {
+                delete currentEvening[`${opDate}_${pid}`];
+                if (s.id) delete currentEvening[`${opDate}_${s.id}`];
+              }
+            }
+          });
+        }
+
+        const isToday = opDate === getOperatingDateStr();
+        const updates = {
+          morningCheckedByDate: currentMorning,
+          eveningReconciledByDate: currentEvening,
+        };
+        if (isToday) {
+          updates.dailyManifest = manifest;
+        } else {
+          const history = [...(get().manifestHistory || [])];
+          const idx = history.findIndex((m) => m.id === manifest.id || m.manifestNo === manifest.manifestNo);
+          if (idx >= 0) {
+            history[idx] = manifest;
+          } else {
+            history.unshift(manifest);
+          }
+          updates.manifestHistory = history;
+        }
+        set(updates);
+        persistState(get());
+        return manifest;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch manifest for date:', dateStr, err);
+    }
+    return null;
   },
 
   // ── KPIs Selector ──
@@ -421,7 +728,7 @@ export const useVanStockStore = create((set, get) => ({
     };
   },
 
-  // â”€â”€ Restock Requirements Selector â”€â”€
+  // -- Restock Requirements Selector --
   getRestockRequirements: () => {
     const { products, vanStock, mainStoreStock } = get();
 
@@ -458,212 +765,212 @@ export const useVanStockStore = create((set, get) => ({
     });
   },
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -------------------------------------------------------------
   // ASYNC MUTATION ACTIONS (WIRED TO BACKEND REST APIS)
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -------------------------------------------------------------
 
   /**
    * Action 1: Load Van Stock (Store -> Vehicle Transfer)
+   * Supports both batch multi-item payload and single item payload.
    */
-  loadVanStock: async ({ productId, quantity, repName, notes }) => {
+  loadVanStock: async (payload) => {
     const { products, mainStoreStock, vanStock, stockMovements, isOnline } = get();
-    const prodId = Number(productId);
-    const qty = Number(quantity);
+    const rawItems = Array.isArray(payload.items) && payload.items.length > 0
+      ? payload.items
+      : [{ productId: payload.productId, quantity: payload.quantity, notes: payload.notes }];
 
-    const product = products.find((p) => p.id === prodId);
-    if (!product) throw new Error('Product not found in catalog.');
-
-    const warehouseItem = mainStoreStock.find((m) => m.productId === prodId);
-    const availableWarehouseQty = warehouseItem ? warehouseItem.quantity : 0;
-
-    validateStoreToVehicleTransfer({
-      requestedQty: qty,
-      availableWarehouseQty,
-    });
-
-    const netPrice = calcNetUnitPrice(product.basePrice, product.companyDiscountPercent);
-
-    // 1. Decrement warehouse stock
-    const updatedMainStore = mainStoreStock.map((m) => {
-      if (m.productId === prodId) {
-        return { ...m, quantity: Math.max(0, m.quantity - qty) };
-      }
-      return m;
-    });
-
-    // 2. Increment van stock (or add new entry)
+    let updatedMainStore = [...mainStoreStock];
     let updatedVanStock = [...vanStock];
-    const existingVanIndex = updatedVanStock.findIndex((v) => v.productId === prodId);
+    const newMovements = [];
 
-    if (existingVanIndex >= 0) {
-      const curr = updatedVanStock[existingVanIndex];
-      updatedVanStock[existingVanIndex] = {
-        ...curr,
-        quantity: curr.quantity + qty,
-        status: 'PENDING_CONFIRMATION',
-        repChecked: false,
-        repCheckedAt: null,
-        discrepancyFlag: false,
-        confirmedBy: null,
-        confirmedAt: null,
-      };
-    } else {
-      updatedVanStock.push({
-        id: Date.now() + Math.floor(Math.random() * 100),
-        locationId: 'LOC_VAN_01',
-        locationType: 'VEHICLE',
-        vehicleId: DEFAULT_VAN_ID,
+    for (const item of rawItems) {
+      const prodId = Number(item.productId);
+      const qty = Number(item.quantity);
+
+      const product = products.find((p) => p.id === prodId);
+      if (!product) continue;
+
+      const warehouseItem = updatedMainStore.find((m) => m.productId === prodId);
+      const availableWarehouseQty = warehouseItem ? warehouseItem.quantity : 0;
+
+      validateStoreToVehicleTransfer({
+        requestedQty: qty,
+        availableWarehouseQty,
+      });
+
+      const netPrice = calcNetUnitPrice(product.basePrice, product.companyDiscountPercent);
+
+      // 1. Decrement warehouse stock
+      updatedMainStore = updatedMainStore.map((m) => {
+        if (m.productId === prodId) {
+          return { ...m, quantity: Math.max(0, m.quantity - qty) };
+        }
+        return m;
+      });
+
+      // 2. Increment van stock (or add new entry)
+      const existingVanIndex = updatedVanStock.findIndex((v) => v.productId === prodId);
+      if (existingVanIndex >= 0) {
+        const curr = updatedVanStock[existingVanIndex];
+        updatedVanStock[existingVanIndex] = {
+          ...curr,
+          quantity: curr.quantity + qty,
+          status: 'PENDING_CONFIRMATION',
+          repChecked: false,
+          repCheckedAt: null,
+          discrepancyFlag: false,
+          confirmedBy: null,
+          confirmedAt: null,
+        };
+      } else {
+        updatedVanStock.push({
+          id: Date.now() + Math.floor(Math.random() * 100),
+          locationId: 'LOC_VAN_01',
+          locationType: 'VEHICLE',
+          vehicleId: DEFAULT_VAN_ID,
+          productId: prodId,
+          productName: product.name,
+          sku: product.sku,
+          unit: product.unit,
+          quantity: qty,
+          basePrice: product.basePrice,
+          companyDiscountPercent: product.companyDiscountPercent,
+          targetCapacity: product.targetCapacity,
+          status: 'PENDING_CONFIRMATION',
+          repChecked: false,
+          repCheckedAt: null,
+          discrepancyFlag: false,
+          confirmedBy: null,
+          confirmedAt: null,
+        });
+      }
+
+      // 3. Append immutable audit movement
+      const movement = buildMovementRecord({
+        movementType: 'STORE_TO_VEHICLE_LOAD',
+        sourceLocation: 'LOC_MAIN',
+        targetLocation: 'LOC_VAN_01',
         productId: prodId,
         productName: product.name,
         sku: product.sku,
-        unit: product.unit,
         quantity: qty,
-        basePrice: product.basePrice,
-        companyDiscountPercent: product.companyDiscountPercent,
-        targetCapacity: product.targetCapacity,
-        status: 'PENDING_CONFIRMATION',
-        repChecked: false,
-        repCheckedAt: null,
-        discrepancyFlag: false,
-        confirmedBy: null,
-        confirmedAt: null,
+        unitPrice: netPrice,
+        reference: `LOAD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(10 + Math.random() * 90)}`,
+        performedBy: payload.repName || 'Warehouse Dispatcher',
+        notes: item.notes || payload.notes || 'Store-to-Vehicle transfer dispatch',
       });
+      newMovements.push(movement);
     }
-
-    // 3. Append immutable audit movement
-    const movement = buildMovementRecord({
-      movementType: 'STORE_TO_VEHICLE_LOAD',
-      sourceLocation: 'LOC_MAIN',
-      targetLocation: 'LOC_VAN_01',
-      productId: prodId,
-      productName: product.name,
-      sku: product.sku,
-      quantity: qty,
-      unitPrice: netPrice,
-      reference: `LOAD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(10 + Math.random() * 90)}`,
-      performedBy: repName || 'Warehouse Dispatcher',
-      notes: notes || 'Store-to-Vehicle transfer dispatch',
-    });
-
-    const updatedMovements = [movement, ...stockMovements];
 
     const nextState = {
       mainStoreStock: updatedMainStore,
       vanStock: updatedVanStock,
-      stockMovements: updatedMovements,
+      stockMovements: [...newMovements, ...stockMovements],
     };
-
-    if (!isOnline) {
-      nextState.offlineQueue = [
-        ...get().offlineQueue,
-        { type: 'STORE_TO_VEHICLE_LOAD', payload: { productId, quantity, repName, notes }, timestamp: Date.now() },
-      ];
-    }
 
     set(nextState);
     persistState(get());
 
-    // Wire to real backend REST API
     if (isOnline) {
       try {
         await vanStockApi.loadVanStock({
-          productId: prodId,
-          quantity: qty,
-          repName,
-          notes,
+          ...payload,
+          vehicleId: get().vehicle?.id || 'VAN-01',
         });
       } catch (err) {
-        console.warn('Backend loadVanStock sync queued for retry:', err);
+        console.warn('Backend loadVanStock sync error:', err);
       }
     }
 
-    return { success: true, movement };
+    return { success: true, movements: newMovements };
   },
 
   /**
    * Action 2: Return to Store (Vehicle -> Store Unsold Return)
+   * Supports both batch multi-item payload and single item payload.
    */
-  returnToStore: async ({ productId, quantity, reason, performedBy }) => {
+  returnToStore: async (payload) => {
     const { products, mainStoreStock, vanStock, stockMovements, isOnline } = get();
-    const prodId = Number(productId);
-    const qty = Number(quantity);
+    const rawItems = Array.isArray(payload.items) && payload.items.length > 0
+      ? payload.items
+      : [{ productId: payload.productId, quantity: payload.quantity, reason: payload.reason }];
 
-    const product = products.find((p) => p.id === prodId);
-    if (!product) throw new Error('Product not found in catalog.');
-
-    const vanItem = vanStock.find((v) => v.productId === prodId);
-    const availableVanQty = vanItem ? vanItem.quantity : 0;
-
-    validateVehicleToStoreReturn({
-      returnQty: qty,
-      availableVanQty,
-    });
-
-    const netPrice = calcNetUnitPrice(product.basePrice, product.companyDiscountPercent);
-
-    // 1. Decrement van stock
-    const updatedVanStock = vanStock.map((v) => {
-      if (v.productId === prodId) {
-        return { ...v, quantity: Math.max(0, v.quantity - qty) };
-      }
-      return v;
-    });
-
-    // 2. Increment warehouse stock
+    let updatedVanStock = [...vanStock];
     let updatedMainStore = [...mainStoreStock];
-    const warehouseIndex = updatedMainStore.findIndex((m) => m.productId === prodId);
-    if (warehouseIndex >= 0) {
-      updatedMainStore[warehouseIndex] = {
-        ...updatedMainStore[warehouseIndex],
-        quantity: updatedMainStore[warehouseIndex].quantity + qty,
-      };
-    } else {
-      updatedMainStore.push({
-        id: Date.now() + Math.floor(Math.random() * 100),
-        locationId: 'LOC_MAIN',
-        locationType: 'MAIN_STORE',
-        vehicleId: null,
+    const newMovements = [];
+
+    for (const item of rawItems) {
+      const prodId = Number(item.productId);
+      const qty = Number(item.quantity);
+
+      const product = products.find((p) => p.id === prodId);
+      if (!product) continue;
+
+      const vanItem = updatedVanStock.find((v) => v.productId === prodId);
+      const availableVanQty = vanItem ? vanItem.quantity : 0;
+
+      validateVehicleToStoreReturn({
+        returnQty: qty,
+        availableVanQty,
+      });
+
+      const netPrice = calcNetUnitPrice(product.basePrice, product.companyDiscountPercent);
+
+      // 1. Decrement van stock
+      updatedVanStock = updatedVanStock.map((v) => {
+        if (v.productId === prodId) {
+          return { ...v, quantity: Math.max(0, v.quantity - qty) };
+        }
+        return v;
+      });
+
+      // 2. Increment warehouse stock
+      const warehouseIndex = updatedMainStore.findIndex((m) => m.productId === prodId);
+      if (warehouseIndex >= 0) {
+        updatedMainStore[warehouseIndex] = {
+          ...updatedMainStore[warehouseIndex],
+          quantity: updatedMainStore[warehouseIndex].quantity + qty,
+        };
+      } else {
+        updatedMainStore.push({
+          id: Date.now() + Math.floor(Math.random() * 100),
+          locationId: 'LOC_MAIN',
+          locationType: 'MAIN_STORE',
+          vehicleId: null,
+          productId: prodId,
+          productName: product.name,
+          sku: product.sku,
+          unit: product.unit,
+          quantity: qty,
+          basePrice: product.basePrice,
+          companyDiscountPercent: product.companyDiscountPercent,
+          targetCapacity: 100,
+          status: 'APPROVED',
+        });
+      }
+
+      // 3. Append immutable audit movement
+      const movement = buildMovementRecord({
+        movementType: 'VEHICLE_TO_STORE_RETURN',
+        sourceLocation: 'LOC_VAN_01',
+        targetLocation: 'LOC_MAIN',
         productId: prodId,
         productName: product.name,
         sku: product.sku,
-        unit: product.unit,
         quantity: qty,
-        basePrice: product.basePrice,
-        companyDiscountPercent: product.companyDiscountPercent,
-        targetCapacity: 100,
-        status: 'APPROVED',
+        unitPrice: netPrice,
+        reference: `RET-${Date.now().toString().slice(-6)}`,
+        performedBy: payload.performedBy || 'Kamal Perera',
+        notes: item.reason || payload.reason || payload.notes || 'Unsold stock returned to warehouse',
       });
+      newMovements.push(movement);
     }
-
-    // 3. Append immutable audit movement
-    const movement = buildMovementRecord({
-      movementType: 'VEHICLE_TO_STORE_RETURN',
-      sourceLocation: 'LOC_VAN_01',
-      targetLocation: 'LOC_MAIN',
-      productId: prodId,
-      productName: product.name,
-      sku: product.sku,
-      quantity: qty,
-      unitPrice: netPrice,
-      reference: `RET-${Date.now().toString().slice(-6)}`,
-      performedBy: performedBy || 'Kamal Perera',
-      notes: reason || 'Unsold stock returned to warehouse',
-    });
-
-    const updatedMovements = [movement, ...stockMovements];
 
     const nextState = {
       mainStoreStock: updatedMainStore,
       vanStock: updatedVanStock,
-      stockMovements: updatedMovements,
+      stockMovements: [...newMovements, ...stockMovements],
     };
-
-    if (!isOnline) {
-      nextState.offlineQueue = [
-        ...get().offlineQueue,
-        { type: 'VEHICLE_TO_STORE_RETURN', payload: { productId, quantity, reason, performedBy }, timestamp: Date.now() },
-      ];
-    }
 
     set(nextState);
     persistState(get());
@@ -671,17 +978,15 @@ export const useVanStockStore = create((set, get) => ({
     if (isOnline) {
       try {
         await vanStockApi.returnToStore({
-          productId: prodId,
-          quantity: qty,
-          reason,
-          performedBy,
+          ...payload,
+          vehicleId: get().vehicle?.id || 'VAN-01',
         });
       } catch (err) {
-        console.warn('Backend returnToStore sync queued:', err);
+        console.warn('Backend returnToStore sync error:', err);
       }
     }
 
-    return { success: true, movement };
+    return { success: true, movements: newMovements };
   },
 
   /**
@@ -719,7 +1024,7 @@ export const useVanStockStore = create((set, get) => ({
           sku: product?.sku || item.sku,
           quantity: qty,
           unitPrice: netPrice,
-          reference: invoiceNo || `INV-${Date.now().toString().slice(-6)}`,
+          reference: invoiceNo || `BILL-${Date.now().toString().slice(-6)}`,
           performedBy: performedBy || 'Kamal Perera',
           notes: `Road sale invoice to ${customerName || 'Hardware Retailer'}`,
         })
@@ -765,6 +1070,7 @@ export const useVanStockStore = create((set, get) => ({
     fromLocation = 'VEHICLE',
     quantity,
     reason,
+    notes,
     sourceInvoiceNo,
     manifestNo,
     sourceManifestNo,
@@ -772,127 +1078,129 @@ export const useVanStockStore = create((set, get) => ({
     reportedBy,
     unitPrice,
   }) => {
-    const { products, vanStock, mainStoreStock, damagedGoods, stockMovements, isOnline } = get();
-    const prodId = Number(productId);
-    const qty = Number(quantity);
+  const { products, vanStock, mainStoreStock, damagedGoods, stockMovements, isOnline } = get();
+  const prodId = Number(productId);
+  const qty = Number(quantity);
+  const effectiveReason = reason?.trim() || notes?.trim() || 'Damaged goods transfer';
 
-    const product = products.find((p) => p.id === prodId);
-    if (!product) throw new Error('Product not found.');
+  const product = products.find((p) => p.id === prodId);
+  if (!product) throw new Error('Product not found.');
 
-    validateDamagedGoodsQuarantine({ quantity: qty, reason, reportedBy });
+  validateDamagedGoodsQuarantine({ quantity: qty, reason: effectiveReason, reportedBy });
 
-    const netPrice = unitPrice || calcNetUnitPrice(product.basePrice, product.companyDiscountPercent);
-    const totalLoss = calcTotalRealValue(netPrice, qty);
+  const netPrice = unitPrice || calcNetUnitPrice(product.basePrice, product.companyDiscountPercent);
+  const totalLoss = calcTotalRealValue(netPrice, qty);
 
-    let updatedVanStock = vanStock;
-    let updatedMainStore = mainStoreStock;
+  let updatedVanStock = vanStock;
+  let updatedMainStore = mainStoreStock;
 
-    if (fromLocation === 'VEHICLE') {
-      updatedVanStock = vanStock.map((v) => {
-        if (v.productId === prodId) {
-          return { ...v, quantity: Math.max(0, v.quantity - qty) };
-        }
-        return v;
-      });
-    } else if (fromLocation === 'MAIN_STORE') {
-      updatedMainStore = mainStoreStock.map((m) => {
-        if (m.productId === prodId) {
-          return { ...m, quantity: Math.max(0, m.quantity - qty) };
-        }
-        return m;
-      });
-    }
-
-    const assignedManifest = manifestNo || sourceManifestNo || null;
-
-    const newRecord = {
-      id: Date.now() + Math.floor(Math.random() * 100),
-      vehicleId: fromLocation === 'VEHICLE' ? DEFAULT_VAN_ID : 'MAIN_STORE',
-      productId: prodId,
-      productName: product.name,
-      sku: product.sku,
-      unit: product.unit,
-      quantity: qty,
-      unitPrice: netPrice,
-      totalValue: totalLoss,
-      reason,
-      sourceInvoiceNo: sourceInvoiceNo || null,
-      manifestNo: assignedManifest,
-      sourceManifestNo: assignedManifest,
-      loadDate: loadDate || null,
-      reportedBy: reportedBy || 'Kamal Perera',
-      status: 'LOGGED',
-      resolutionNotes: null,
-      createdAt: new Date().toISOString(),
-    };
-
-    const movement = buildMovementRecord({
-      movementType: 'RETURN_TO_DAMAGED_POOL',
-      sourceLocation: fromLocation === 'VEHICLE' ? 'LOC_VAN_01' : 'LOC_MAIN',
-      targetLocation: 'LOC_DAMAGED',
-      productId: prodId,
-      productName: product.name,
-      sku: product.sku,
-      quantity: qty,
-      unitPrice: netPrice,
-      reference: assignedManifest || sourceInvoiceNo || `DMG-${Date.now().toString().slice(-6)}`,
-      performedBy: reportedBy || 'Kamal Perera',
-      notes: reason,
-    });
-
-    const nextState = {
-      vanStock: updatedVanStock,
-      mainStoreStock: updatedMainStore,
-      damagedGoods: [newRecord, ...damagedGoods],
-      stockMovements: [movement, ...stockMovements],
-    };
-
-    if (!isOnline) {
-      nextState.offlineQueue = [
-        ...get().offlineQueue,
-        {
-          type: 'RETURN_TO_DAMAGED_POOL',
-          payload: { productId, fromLocation, quantity, reason, sourceInvoiceNo, manifestNo: assignedManifest, loadDate, reportedBy, unitPrice },
-          timestamp: Date.now(),
-        },
-      ];
-    }
-
-    set(nextState);
-    persistState(get());
-
-    if (isOnline) {
-      try {
-        const resp = await vanStockApi.logDamagedGoods({
-          productId: prodId,
-          fromLocation,
-          quantity: qty,
-          reason,
-          sourceInvoiceNo,
-          manifestNo: assignedManifest,
-          sourceManifestNo: assignedManifest,
-          loadDate,
-          reportedBy,
-          unitPrice: netPrice,
-        });
-
-        const backendRecord = resp?.data?.record || resp?.record;
-        if (backendRecord?.id) {
-          // Reconcile temporary client ID with authoritative backend autoincrement ID
-          set({
-            damagedGoods: get().damagedGoods.map((d) =>
-              d.id === newRecord.id ? { ...d, id: backendRecord.id } : d
-            ),
-          });
-          persistState(get());
-        }
-      } catch (err) {
-        console.warn('Backend logDamagedGoods sync error:', err);
+  if (fromLocation === 'VEHICLE') {
+    updatedVanStock = vanStock.map((v) => {
+      if (v.productId === prodId) {
+        return { ...v, quantity: Math.max(0, v.quantity - qty) };
       }
-    }
+      return v;
+    });
+  } else if (fromLocation === 'MAIN_STORE') {
+    updatedMainStore = mainStoreStock.map((m) => {
+      if (m.productId === prodId) {
+        return { ...m, quantity: Math.max(0, m.quantity - qty) };
+      }
+      return m;
+    });
+  }
 
-    return { success: true, record: newRecord, movement };
-  },
+  const assignedManifest = manifestNo || sourceManifestNo || null;
+
+  const newRecord = {
+    id: Date.now() + Math.floor(Math.random() * 100),
+    vehicleId: fromLocation === 'VEHICLE' ? DEFAULT_VAN_ID : 'MAIN_STORE',
+    productId: prodId,
+    productName: product.name,
+    sku: product.sku,
+    unit: product.unit,
+    quantity: qty,
+    unitPrice: netPrice,
+    totalValue: totalLoss,
+    reason: effectiveReason,
+    sourceInvoiceNo: sourceInvoiceNo || null,
+    manifestNo: assignedManifest,
+    sourceManifestNo: assignedManifest,
+    loadDate: loadDate || null,
+    reportedBy: reportedBy || 'Kamal Perera',
+    status: 'LOGGED',
+    resolutionNotes: null,
+    createdAt: new Date().toISOString(),
+  };
+
+  const movement = buildMovementRecord({
+    movementType: 'RETURN_TO_DAMAGED_POOL',
+    sourceLocation: fromLocation === 'VEHICLE' ? 'LOC_VAN_01' : 'LOC_MAIN',
+    targetLocation: 'LOC_DAMAGED',
+    productId: prodId,
+    productName: product.name,
+    sku: product.sku,
+    quantity: qty,
+    unitPrice: netPrice,
+    reference: assignedManifest || sourceInvoiceNo || `DMG-${Date.now().toString().slice(-6)}`,
+    performedBy: reportedBy || 'Kamal Perera',
+    notes: effectiveReason,
+  });
+
+  const nextState = {
+    vanStock: updatedVanStock,
+    mainStoreStock: updatedMainStore,
+    damagedGoods: [newRecord, ...damagedGoods],
+    stockMovements: [movement, ...stockMovements],
+  };
+
+  if (!isOnline) {
+    nextState.offlineQueue = [
+      ...get().offlineQueue,
+      {
+        type: 'RETURN_TO_DAMAGED_POOL',
+        payload: { productId, fromLocation, quantity, reason: effectiveReason, notes, sourceInvoiceNo, manifestNo: assignedManifest, loadDate, reportedBy, unitPrice },
+        timestamp: Date.now(),
+      },
+    ];
+  }
+
+  set(nextState);
+  persistState(get());
+
+  if (isOnline) {
+    try {
+      const resp = await vanStockApi.logDamagedGoods({
+        productId: prodId,
+        fromLocation,
+        quantity: qty,
+        reason: effectiveReason,
+        notes,
+        sourceInvoiceNo,
+        manifestNo: assignedManifest,
+        sourceManifestNo: assignedManifest,
+        loadDate,
+        reportedBy,
+        unitPrice: netPrice,
+      });
+
+      const backendRecord = resp?.data?.record || resp?.record;
+      if (backendRecord?.id) {
+        // Reconcile temporary client ID with authoritative backend autoincrement ID
+        set({
+          damagedGoods: get().damagedGoods.map((d) =>
+            d.id === newRecord.id ? { ...d, id: backendRecord.id } : d
+          ),
+        });
+        persistState(get());
+      }
+    } catch (err) {
+      console.warn('Backend logDamagedGoods sync error:', err);
+    }
+  }
+
+  return { success: true, record: newRecord, movement };
+},
 
   /**
    * Action 5: Adjust Central Main Store Warehouse Stocktake Count
@@ -946,7 +1254,7 @@ export const useVanStockStore = create((set, get) => ({
       unitPrice: netPrice,
       reference: `AUD-${Date.now().toString().slice(-6)}`,
       performedBy: performedBy || 'Warehouse Manager',
-      notes: `${reason} (${change > 0 ? '+' : ''}${change}) â€” ${notes || ''}`,
+      notes: `${reason} (${change > 0 ? '+' : ''}${change}) - ${notes || ''}`,
     });
 
     const nextState = {
@@ -1135,6 +1443,8 @@ export const useVanStockStore = create((set, get) => ({
     return { success: true };
   },
 
+
+
   /**
    * Action 9: Save SKU (Create or Edit Product)
    */
@@ -1312,6 +1622,70 @@ export const useVanStockStore = create((set, get) => ({
     return { success: true };
   },
 
+
+
+  /**
+   * Action 10B: Dynamic Category CRUD
+   */
+  fetchCategories: async () => {
+    try {
+      const res = await vanStockApi.getCategories();
+      if (res && res.data) {
+        set({ categories: res.data });
+      }
+    } catch (e) {
+      console.warn('Failed to fetch categories:', e);
+    }
+  },
+
+  createCategory: async (name) => {
+    try {
+      const res = await vanStockApi.createCategory({ name });
+      const newCat = res.data;
+      set((state) => ({ categories: [...state.categories, newCat] }));
+      await get().fetchCategories();
+      return newCat;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  updateCategory: async (id, name) => {
+    try {
+      const res = await vanStockApi.updateCategory(id, { name });
+      const updated = res.data;
+      set((state) => {
+        const oldCat = state.categories.find((c) => c.id === id);
+        return {
+          categories: state.categories.map((c) => (c.id === id ? { ...c, name } : c)),
+          products: state.products.map((p) => {
+            if (oldCat && p.category === oldCat.name) {
+              return { ...p, category: name };
+            }
+            return p;
+          }),
+        };
+      });
+      await get().fetchCategories();
+      return updated;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  deleteCategory: async (id) => {
+    try {
+      await vanStockApi.deleteCategory(id);
+      set((state) => ({
+        categories: state.categories.filter((c) => c.id !== id),
+      }));
+      await get().fetchCategories();
+      return { success: true };
+    } catch (err) {
+      throw err;
+    }
+  },
+
   /**
    * Action 11: Resolve or update status on a Quarantined Damaged Goods record.
    * Marking as WRITTEN_OFF or VENDOR_RETURN updates status, logs an immutable
@@ -1390,6 +1764,8 @@ export const useVanStockStore = create((set, get) => ({
     return { success: true };
   },
 
+
+
   /**
    * Action: Delete Quarantined Damaged Goods record (Soft-delete)
    */
@@ -1407,6 +1783,8 @@ export const useVanStockStore = create((set, get) => ({
     }
     return { success: true };
   },
+
+
 
   /**
    * Action: Soft Delete Van Stock Item
@@ -1433,6 +1811,8 @@ export const useVanStockStore = create((set, get) => ({
     return { success: true };
   },
 
+
+
   /**
    * Action 12: Process Offline Mutation Queue upon Network Reconnection
    */
@@ -1457,18 +1837,36 @@ export const useVanStockStore = create((set, get) => ({
   /**
    * Action: Configure / Upload Warehouse Keeper or Owner Signature
    */
-  setOwnerSignatureData: async (dataUrl, signerName) => {
+  setOwnerSignatureData: async (dataUrl, signerName, dateStr) => {
+    const opDate = dateStr || getOperatingDateStr();
     const updatedName = signerName || get().ownerSignerName;
-    const nextDailyManifest = {
-      ...get().dailyManifest,
+    const nowIso = new Date().toISOString();
+    const isToday = opDate === getOperatingDateStr();
+
+    const targetManifest = get().getManifestForDate(opDate) || get().dailyManifest;
+    const updatedTargetManifest = {
+      ...targetManifest,
       ownerSignatureData: dataUrl,
       ownerSignedBy: updatedName,
+      ownerSignedAt: nowIso,
     };
-    set({
+
+    const prevHistory = get().manifestHistory || [];
+    const updatedHistory = [
+      updatedTargetManifest,
+      ...prevHistory.filter((m) => m.manifestNo !== updatedTargetManifest.manifestNo && m.id !== updatedTargetManifest.id),
+    ];
+
+    const storeUpdates = {
       ownerSignatureData: dataUrl,
       ownerSignerName: updatedName,
-      dailyManifest: nextDailyManifest,
-    });
+      manifestHistory: updatedHistory,
+    };
+    if (isToday) {
+      storeUpdates.dailyManifest = updatedTargetManifest;
+    }
+
+    set(storeUpdates);
     persistState(get());
 
     try {
@@ -1476,11 +1874,57 @@ export const useVanStockStore = create((set, get) => ({
         signatureData: dataUrl,
         signerName: updatedName,
       });
+      if (updatedTargetManifest.id) {
+        await vanStockApi.dispatchDailyManifest({
+          manifestId: updatedTargetManifest.id,
+          dispatcherName: updatedName,
+          signatureData: dataUrl,
+        });
+      }
     } catch (err) {
       console.warn('Backend saveOwnerSignature sync error:', err);
     }
 
-    return { success: true };
+    return { success: true, manifest: updatedTargetManifest };
+  },
+
+  /**
+   * Action: Fetch Saved Signatures (Owner and/or Rep) from SystemSetting
+   */
+  fetchSavedSignatures: async (repId) => {
+    try {
+      const res = await vanStockApi.getSavedSignatures(repId);
+      if (res?.success && res.data) {
+        set({
+          savedOwnerSignature: res.data.ownerSignature || null,
+          savedRepSignature: res.data.repSignature || null,
+        });
+        return res.data;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch saved signatures:', err);
+    }
+    return null;
+  },
+
+  /**
+   * Action: Save Signature into SystemSetting
+   */
+  saveSignatureSetting: async ({ type, repId, signatureData }) => {
+    try {
+      const res = await vanStockApi.saveSignature({ type, repId, signatureData });
+      if (res?.success) {
+        if (type === 'owner') {
+          set({ savedOwnerSignature: signatureData });
+        } else if (type === 'rep') {
+          set({ savedRepSignature: signatureData });
+        }
+        return { success: true };
+      }
+    } catch (err) {
+      console.error('Failed to save signature setting:', err);
+    }
+    return { success: false };
   },
 
   /**
@@ -1534,111 +1978,304 @@ export const useVanStockStore = create((set, get) => ({
   },
 
   /**
-   * Action: Toggle Rep Line-Item Checkbox Verification
+   * Action: Toggle Rep Line-Item Checkbox Verification (Morning Check)
+   * Strictly date-bound to composite key `${opDate}_${productId}` (and id fallback) and persisted to DB.
    */
-  toggleRepItemChecked: (itemId, forceValue) => {
-    const { vanStock } = get();
+  toggleRepItemChecked: async (itemOrId, dateStr, forceValue) => {
+    const opDate = (typeof dateStr === 'string' && dateStr) ? dateStr : getOperatingDateStr();
+    const pid = typeof itemOrId === 'object' && itemOrId !== null
+      ? (itemOrId.productId || itemOrId.id)
+      : itemOrId;
+    const itemId = typeof itemOrId === 'object' && itemOrId !== null
+      ? (itemOrId.id || pid)
+      : itemOrId;
+    const compositeKey = `${opDate}_${pid}`;
+    const legacyKey = `${opDate}_${itemId}`;
+    const { vanStock, vehicle, morningCheckedByDate = {} } = get();
     const nowIso = new Date().toISOString();
-    const updated = vanStock.map((item) => {
-      if (item.id === Number(itemId)) {
-        const nextChecked = forceValue !== undefined ? Boolean(forceValue) : !item.repChecked;
-        return {
-          ...item,
-          repChecked: nextChecked,
-          repCheckedAt: nextChecked ? nowIso : null,
-          discrepancyFlag: nextChecked ? false : item.discrepancyFlag,
-        };
-      }
-      return item;
-    });
 
-    set({ vanStock: updated });
+    const currentVal = morningCheckedByDate[compositeKey] !== undefined
+      ? Boolean(morningCheckedByDate[compositeKey])
+      : get().isItemMorningChecked(itemOrId, opDate);
+    const nextChecked = forceValue !== undefined ? Boolean(forceValue) : !currentVal;
+
+    const updatedMorning = {
+      ...morningCheckedByDate,
+      [compositeKey]: nextChecked,
+      [legacyKey]: nextChecked,
+    };
+
+    const isToday = opDate === getOperatingDateStr();
+    const updatedVanStock = isToday
+      ? vanStock.map((item) => {
+          if (item.id === Number(itemId) || (item.productId && Number(item.productId) === Number(pid))) {
+            return {
+              ...item,
+              repChecked: nextChecked,
+              repCheckedAt: nextChecked ? nowIso : null,
+              discrepancyFlag: nextChecked ? false : item.discrepancyFlag,
+            };
+          }
+          return item;
+        })
+      : vanStock;
+
+    set({ morningCheckedByDate: updatedMorning, vanStock: updatedVanStock });
     persistState(get());
-    return { success: true };
+
+    try {
+      await vanStockApi.toggleItemCheck({
+        vehicleId: vehicle?.id || 'VAN-01',
+        itemId: Number(itemId),
+        type: 'morning',
+        checked: nextChecked,
+        date: opDate,
+      });
+    } catch (err) {
+      console.warn('Failed to persist morning check to backend:', err);
+    }
+
+    return { success: true, checked: nextChecked };
+  },
+
+  handleToggleCheck: (itemOrId, dateStr, forceValue) => {
+    return get().toggleRepItemChecked(itemOrId, dateStr, forceValue);
   },
 
   /**
-   * Action: Toggle All Rep Loaded Items Checkbox
+   * Action: Toggle Evening Return & Sales Reconciliation Check
+   * Strictly date-bound to composite key `${opDate}_${productId}` (and id fallback) and persisted to DB.
    */
-  toggleAllRepItemsChecked: (checked = true) => {
-    const { vanStock } = get();
+  toggleEveningItemChecked: async (itemOrId, dateStr, forceValue) => {
+    const opDate = (typeof dateStr === 'string' && dateStr) ? dateStr : getOperatingDateStr();
+    const pid = typeof itemOrId === 'object' && itemOrId !== null
+      ? (itemOrId.productId || itemOrId.id)
+      : itemOrId;
+    const itemId = typeof itemOrId === 'object' && itemOrId !== null
+      ? (itemOrId.id || pid)
+      : itemOrId;
+    const compositeKey = `${opDate}_${pid}`;
+    const legacyKey = `${opDate}_${itemId}`;
+    const { vanStock, vehicle, eveningReconciledByDate = {} } = get();
+
+    const currentVal = eveningReconciledByDate[compositeKey] !== undefined
+      ? Boolean(eveningReconciledByDate[compositeKey])
+      : get().isItemEveningChecked(itemOrId, opDate);
+    const nextChecked = forceValue !== undefined ? Boolean(forceValue) : !currentVal;
+
+    const updatedEvening = {
+      ...eveningReconciledByDate,
+      [compositeKey]: nextChecked,
+      [legacyKey]: nextChecked,
+    };
+
+    const isToday = opDate === getOperatingDateStr();
+    const updatedVanStock = isToday
+      ? vanStock.map((item) => {
+          if (item.id === Number(itemId) || (item.productId && Number(item.productId) === Number(pid))) {
+            return {
+              ...item,
+              eveningReconciled: nextChecked,
+            };
+          }
+          return item;
+        })
+      : vanStock;
+
+    set({ eveningReconciledByDate: updatedEvening, vanStock: updatedVanStock });
+    persistState(get());
+
+    try {
+      await vanStockApi.toggleItemCheck({
+        vehicleId: vehicle?.id || 'VAN-01',
+        itemId: Number(itemId),
+        type: 'evening',
+        checked: nextChecked,
+        date: opDate,
+      });
+    } catch (err) {
+      console.warn('Failed to persist evening check to backend:', err);
+    }
+
+    return { success: true, checked: nextChecked };
+  },
+
+  handleToggleEveningReconciled: (itemOrId, dateStr, forceValue) => {
+    return get().toggleEveningItemChecked(itemOrId, dateStr, forceValue);
+  },
+
+  /**
+   * Action: Toggle All Rep Loaded Items Checkbox (Morning Check)
+   */
+  toggleAllRepItemsChecked: (checked = true, dateStr) => {
+    const opDate = (typeof dateStr === 'string' && dateStr) ? dateStr : getOperatingDateStr();
+    const { vanStock, vehicle, morningCheckedByDate = {} } = get();
     const nowIso = new Date().toISOString();
-    const updated = vanStock.map((item) => {
+    const updatedMorning = { ...morningCheckedByDate };
+
+    vanStock.forEach((item) => {
       if (item.quantity > 0) {
-        return {
-          ...item,
-          repChecked: checked,
-          repCheckedAt: checked ? nowIso : null,
-          discrepancyFlag: checked ? false : item.discrepancyFlag,
-        };
+        const pid = item.productId || item.id;
+        updatedMorning[`${opDate}_${pid}`] = checked;
+        updatedMorning[`${opDate}_${item.id}`] = checked;
       }
-      return item;
     });
 
-    set({ vanStock: updated });
+    const isToday = opDate === getOperatingDateStr();
+    const updatedVanStock = isToday
+      ? vanStock.map((item) => {
+          if (item.quantity > 0) {
+            return {
+              ...item,
+              repChecked: checked,
+              repCheckedAt: checked ? nowIso : null,
+              discrepancyFlag: checked ? false : item.discrepancyFlag,
+            };
+          }
+          return item;
+        })
+      : vanStock;
+
+    set({ morningCheckedByDate: updatedMorning, vanStock: updatedVanStock });
     persistState(get());
+
+    try {
+      vanStock.forEach((item) => {
+        if (item.quantity > 0) {
+          vanStockApi.toggleItemCheck({
+            vehicleId: vehicle?.id || 'VAN-01',
+            itemId: Number(item.id),
+            type: 'morning',
+            checked,
+            date: opDate,
+          }).catch(() => { });
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to persist morning check all:', e);
+    }
+
+    return { success: true, allChecked: checked };
+  },
+
+  /**
+   * Action: Toggle All Evening Reconciliation Checkbox
+   */
+  toggleAllEveningItemsChecked: (checked = true, dateStr) => {
+    const opDate = (typeof dateStr === 'string' && dateStr) ? dateStr : getOperatingDateStr();
+    const { vanStock, vehicle, eveningReconciledByDate = {} } = get();
+    const updatedEvening = { ...eveningReconciledByDate };
+
+    vanStock.forEach((item) => {
+      if (item.quantity > 0) {
+        const pid = item.productId || item.id;
+        updatedEvening[`${opDate}_${pid}`] = checked;
+        updatedEvening[`${opDate}_${item.id}`] = checked;
+      }
+    });
+
+    const isToday = opDate === getOperatingDateStr();
+    const updatedVanStock = isToday
+      ? vanStock.map((item) => {
+          if (item.quantity > 0) {
+            return {
+              ...item,
+              eveningReconciled: checked,
+            };
+          }
+          return item;
+        })
+      : vanStock;
+
+    set({ eveningReconciledByDate: updatedEvening, vanStock: updatedVanStock });
+    persistState(get());
+
+    try {
+      vanStock.forEach((item) => {
+        if (item.quantity > 0) {
+          vanStockApi.toggleItemCheck({
+            vehicleId: vehicle?.id || 'VAN-01',
+            itemId: Number(item.id),
+            type: 'evening',
+            checked,
+            date: opDate,
+          }).catch(() => { });
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to persist evening reconcile all:', e);
+    }
+
     return { success: true, allChecked: checked };
   },
 
   /**
    * Action: Submit Rep Verification with Signature
-   * Supports target manifest revision code (e.g. MAN-YYYYMMDD-01-R4)
-   * skipApi: when true, skips remote network call (used when caller handles API call directly to prevent duplicate requests)
+   * Supports target manifest revision code (e.g. MAN-YYYYMMDD-01-R4) and date-binding
    */
   submitRepVerificationWithSignature: async ({
     signatureData,
     repName,
     manifestNo: targetManifestNo,
+    dateStr,
+    morningCheckedItems,
     skipApi = false,
   }) => {
-    const { dailyManifest, vanStock } = get();
+    const opDate = (typeof dateStr === 'string' && dateStr) ? dateStr : getOperatingDateStr();
+    const isToday = opDate === getOperatingDateStr();
+    const targetManifest = get().getManifestForDate(opDate) || get().dailyManifest;
+    const { vanStock, vehicle } = get();
     const nowIso = new Date().toISOString();
-    const signer = repName || dailyManifest.repName || 'Kamal Perera';
-    const effectiveManifestNo = targetManifestNo || dailyManifest.manifestNo;
+    const signer = repName || targetManifest.repName || 'Kamal Perera';
+    const effectiveManifestNo = targetManifestNo || targetManifest.manifestNo;
 
     // Parse revision if present in target code
     const revMatch = effectiveManifestNo?.match(/-R(\d+)$/i);
-    const parsedRev = revMatch ? parseInt(revMatch[1], 10) : dailyManifest.manifestRevision || 1;
+    const parsedRev = revMatch ? parseInt(revMatch[1], 10) : targetManifest.manifestRevision || 1;
 
     const activeItems = vanStock.filter((i) => i.quantity > 0 && i.isActive !== false);
-    const uncheckedActiveItems = activeItems.filter((i) => !i.repChecked);
+    const uncheckedActiveItems = activeItems.filter((i) => !get().isItemMorningChecked(i, opDate));
     const isFullVerification = uncheckedActiveItems.length === 0;
 
-    const updatedVanStock = vanStock.map((v) => {
-      if (v.quantity <= 0) {
-        // Reset zero-quantity items to eliminate stray pending/discrepancy states
-        return {
-          ...v,
-          status: 'APPROVED',
-          discrepancyFlag: false,
-        };
-      }
-      if (isFullVerification || v.repChecked) {
-        return {
-          ...v,
-          status: 'APPROVED',
-          repChecked: true,
-          repCheckedAt: v.repCheckedAt || nowIso,
-          discrepancyFlag: false,
-          confirmedBy: signer,
-          confirmedAt: nowIso,
-        };
-      } else {
-        return {
-          ...v,
-          status: 'UNVERIFIED_BY_REP',
-          repChecked: false,
-          repCheckedAt: null,
-          discrepancyFlag: true,
-          confirmedBy: null,
-          confirmedAt: null,
-        };
-      }
-    });
+    const morningCheckedSkus = (Array.isArray(morningCheckedItems) && morningCheckedItems.length > 0)
+      ? morningCheckedItems
+      : activeItems
+          .filter((i) => get().isItemMorningChecked(i, opDate))
+          .map((i) => i.sku || String(i.productId || i.id));
+
+    const updatedVanStock = isToday
+      ? vanStock.map((v) => {
+          if (v.quantity <= 0) {
+            return { ...v, status: 'APPROVED', discrepancyFlag: false };
+          }
+          const isMorningChecked = get().isItemMorningChecked(v, opDate);
+          if (isFullVerification || isMorningChecked) {
+            return {
+              ...v,
+              status: 'APPROVED',
+              repChecked: true,
+              repCheckedAt: v.repCheckedAt || nowIso,
+              discrepancyFlag: false,
+              confirmedBy: signer,
+              confirmedAt: nowIso,
+            };
+          } else {
+            return {
+              ...v,
+              status: 'UNVERIFIED_BY_REP',
+              repChecked: false,
+              repCheckedAt: null,
+              discrepancyFlag: true,
+              confirmedBy: null,
+              confirmedAt: null,
+            };
+          }
+        })
+      : vanStock;
 
     const manifestStatus = isFullVerification ? 'REP_ACCEPTED' : 'PARTIAL_DISCREPANCY';
     const updatedManifest = {
-      ...dailyManifest,
+      ...targetManifest,
       manifestNo: effectiveManifestNo,
       manifestRevision: parsedRev,
       repSignatureData: signatureData,
@@ -1647,51 +2284,104 @@ export const useVanStockStore = create((set, get) => ({
       repSignedAt: nowIso,
       status: manifestStatus,
       uncheckedCount: isFullVerification ? 0 : uncheckedActiveItems.length,
+      morningCheckedItems: morningCheckedSkus,
     };
 
     const prevHistory = get().manifestHistory || [];
     const updatedHistory = [
       updatedManifest,
-      ...prevHistory.filter((m) => m.manifestNo !== updatedManifest.manifestNo),
+      ...prevHistory.filter((m) => m.manifestNo !== updatedManifest.manifestNo && m.id !== updatedManifest.id),
     ];
 
-    set({
-      dailyManifest: updatedManifest,
+    const storeUpdates = {
       vanStock: updatedVanStock,
       manifestHistory: updatedHistory,
-    });
+    };
+    if (isToday) {
+      storeUpdates.dailyManifest = updatedManifest;
+    }
+
+    set(storeUpdates);
     persistState(get());
 
     if (!skipApi) {
       try {
-        await vanStockApi.signPublicManifest(effectiveManifestNo, {
+        await vanStockApi.verifyManifestByRep({
+          manifestNo: effectiveManifestNo,
+          vehicleId: vehicle?.id || 'VAN-01',
           signatureData,
-          repSignature: signatureData,
-          signature: signatureData,
           repName: signer,
-          items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
+          date: opDate,
+          morningCheckedItems: morningCheckedSkus,
+          items: activeItems.map((i) => ({ itemId: i.id, repChecked: get().isItemMorningChecked(i, opDate) })),
         });
       } catch (err) {
-        try {
-          await vanStockApi.verifyPublicManifest(effectiveManifestNo, {
-            signatureData,
-            repSignature: signatureData,
-            signature: signatureData,
-            repName: signer,
-            items: activeItems.map((i) => ({ itemId: i.id, repChecked: Boolean(i.repChecked) })),
-          });
-        } catch (innerErr) {
-          console.warn('Backend signature verification sync error:', innerErr);
-        }
+        console.warn('Backend verifyManifestByRep sync error:', err);
       }
     }
 
     return {
       success: true,
-      manifest: updatedManifest,
       isFullVerification,
-      uncheckedCount: isFullVerification ? 0 : uncheckedActiveItems.length,
+      uncheckedCount: updatedManifest.uncheckedCount,
+      manifest: updatedManifest,
+      morningCheckedItems: morningCheckedSkus,
     };
+  },
+
+  /**
+   * Action: Save Evening Stock Reconciliation Checklist to Database
+   */
+  saveEveningReconciliation: async (dateStr, items) => {
+    const opDate = (typeof dateStr === 'string' && dateStr) ? dateStr : getOperatingDateStr();
+    const { vanStock, vehicle, getManifestForDate, dailyManifest } = get();
+    const targetManifest = (getManifestForDate ? getManifestForDate(opDate) : null) || dailyManifest;
+
+    const activeItems = vanStock.filter((i) => i.quantity > 0 && i.isActive !== false);
+    const checkedEveningSkus = (Array.isArray(items) && items.length > 0)
+      ? items
+      : activeItems
+          .filter((i) => get().isItemEveningChecked(i, opDate))
+          .map((i) => i.sku || String(i.productId || i.id));
+
+    try {
+      const res = await vanStockApi.saveEveningChecks({
+        vehicleId: vehicle?.id || 'VAN-01',
+        manifestNo: targetManifest?.manifestNo,
+        date: opDate,
+        eveningCheckedItems: checkedEveningSkus,
+      });
+
+      const updatedManifest = {
+        ...targetManifest,
+        eveningCheckedItems: checkedEveningSkus,
+      };
+
+      const isToday = opDate === getOperatingDateStr();
+      const storeUpdates = {};
+      if (isToday) {
+        storeUpdates.dailyManifest = updatedManifest;
+      }
+      const prevHistory = get().manifestHistory || [];
+      const updatedHistory = [
+        updatedManifest,
+        ...prevHistory.filter((m) => m.manifestNo !== updatedManifest.manifestNo && m.id !== updatedManifest.id),
+      ];
+      storeUpdates.manifestHistory = updatedHistory;
+
+      set(storeUpdates);
+      persistState(get());
+
+      return {
+        success: true,
+        count: checkedEveningSkus.length,
+        items: checkedEveningSkus,
+        data: res?.data,
+      };
+    } catch (err) {
+      console.warn('Failed to save evening reconciliation checks to backend:', err);
+      return { success: false, error: err };
+    }
   },
 
   /**
@@ -1924,7 +2614,7 @@ if (typeof window !== 'undefined') {
     }
   }, 100);
 
-  // â”€â”€ Real-Time Cross-Tab Synchronization Listener â”€â”€
+  // -- Real-Time Cross-Tab Synchronization Listener --
   window.addEventListener('storage', (event) => {
     if (event.key === STORAGE_KEY && event.newValue) {
       try {
@@ -1941,6 +2631,8 @@ if (typeof window !== 'undefined') {
           manifestHistory: parsed.manifestHistory || HISTORICAL_MANIFESTS,
           ownerSignatureData: parsed.ownerSignatureData || DEFAULT_OWNER_SIGNATURE,
           ownerSignerName: parsed.ownerSignerName || 'W. Liyanage (Managing Director / Owner)',
+          morningCheckedByDate: parsed.morningCheckedByDate || {},
+          eveningReconciledByDate: parsed.eveningReconciledByDate || {},
         });
       } catch (_err) {
         console.warn('Failed to parse synchronized van stock state across tabs.');

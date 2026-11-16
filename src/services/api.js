@@ -418,3 +418,14 @@ export const authApi = {
   login: (payload) => api.post('/auth/login', payload),
   me: () => api.get('/auth/me'),
 };
+
+/**
+ * CATEGORIES
+ * Dynamic Hardware Product Categories CRUD
+ */
+export const categoriesApi = {
+  list: () => api.get('/categories'),
+  create: (data) => api.post('/categories', data),
+  update: (id, data) => api.put(`/categories/${id}`, data),
+  delete: (id) => api.delete(`/categories/${id}`),
+};

@@ -30,7 +30,6 @@ import SmartCombobox from '../ui/SmartCombobox';
 import PrintVanStockSheet from './PrintVanStockSheet';
 import useAppStore from '../../hooks/useAppStore';
 import useVanStockStore from '../../hooks/useVanStockStore';
-import { openWhatsAppChat, formatSriLankanWhatsAppNumber } from '../../utils/whatsapp';
 import {
   calcNetUnitPrice,
   calcTotalRealValue,
@@ -57,7 +56,6 @@ export default function VanStockTransferDashboard() {
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferError, setTransferError] = useState('');
   const [isPrintOpen, setIsPrintOpen] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   // Discrepancy items computation: dynamically reflects current items and manifest status
   const uncheckedByRepItems = useMemo(() => {
@@ -113,8 +111,7 @@ export default function VanStockTransferDashboard() {
     'Unassigned';
 
   /**
-   * Dispatches updated manifest notification to sales rep following transfer workbench adjustments.
-   * Dynamically resolves sales rep phone from database record and passes it to openWhatsAppChat.
+   * Dispatches updated manifest notification internally following transfer workbench adjustments.
    */
   const handleReDispatch = async () => {
     const result = await reDispatchManifest({
@@ -125,21 +122,7 @@ export default function VanStockTransferDashboard() {
       result?.manifest?.manifestNo ||
       dailyManifest?.manifestNo ||
       `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
-    const shareUrl = `${window.location.origin}/share/van-manifest/${manifestCode}`;
-    // Clean text template without emojis to prevent device-specific Mojibake and encoding corruption
-    const message = `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
-
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success(`Manifest ${manifestCode} link copied to clipboard.`);
-    } catch {
-      toast.info(`Manifest ${manifestCode} link: ${shareUrl}`);
-    }
-
-    if (dynamicRepPhone) {
-      openWhatsAppChat(dynamicRepPhone, message);
-      toast.info(`WhatsApp dispatch opened for ${dynamicRepName} (${dynamicRepPhone})`);
-    }
+    toast.success(`Manifest ${manifestCode} re-dispatched successfully.`);
   };
 
   // Selected product calculations for left pane
@@ -206,7 +189,7 @@ export default function VanStockTransferDashboard() {
   );
 
   // Handle Transfer
-  const handleExecuteTransfer = (e) => {
+  const handleExecuteTransfer = async (e) => {
     e.preventDefault();
     setTransferError('');
 
@@ -225,7 +208,7 @@ export default function VanStockTransferDashboard() {
 
     setIsTransferring(true);
     try {
-      loadVanStock({
+      await loadVanStock({
         productId: Number(selectedProductId),
         quantity: parsedTransferQty,
         repName: vehicle.repName,
@@ -258,48 +241,6 @@ export default function VanStockTransferDashboard() {
     }
   };
 
-  /**
-   * Direct WhatsApp Manifest Sharing via dynamically resolved SalesPerson mobile number
-   * and unique manifest route. Passes dynamic phone into openWhatsAppChat utility.
-   */
-  const handleWhatsAppShare = async () => {
-    const manifestCode =
-      dailyManifest?.manifestNo ||
-      `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
-    const shareUrl = `${window.location.origin}/share/van-manifest/${manifestCode}`;
-    // Clean text template without emojis to prevent device-specific Mojibake and encoding corruption
-    const message = `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
-
-    // Always copy link to clipboard for quick multi-channel access
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
-    } catch (_clipErr) {
-      // Fallback ignore
-    }
-
-    if (!dynamicRepPhone) {
-      toast.warning(`No phone number registered for ${dynamicRepName}. Manifest link copied to clipboard.`);
-      toast.info(`Manifest URL: ${shareUrl}`);
-      return;
-    }
-
-    const whatsappUrl = openWhatsAppChat(dynamicRepPhone, message);
-    if (whatsappUrl) {
-      toast.success(
-        `WhatsApp launched for ${dynamicRepName} (${dynamicRepPhone}) & link copied!`
-      );
-    } else {
-      toast.error(`Invalid phone number format for ${dynamicRepName} (${dynamicRepPhone}).`);
-    }
-  };
-
-  /**
-   * Alias for WhatsApp dispatch to support standard nomenclature across route & sales modules.
-   */
-  const handleWhatsApp = handleWhatsAppShare;
-
   return (
     <VanStockLayout>
       {/* Top Breadcrumb & Actions Bar with anti-clipping safe padding */}
@@ -326,21 +267,6 @@ export default function VanStockTransferDashboard() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={handleWhatsAppShare}
-            title={dynamicRepPhone ? `Direct WhatsApp Share to ${dynamicRepName} (${dynamicRepPhone})` : 'No Rep Phone Registered'}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-emerald-300 dark:border-emerald-700/60 bg-emerald-50/70 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-sm whitespace-nowrap"
-          >
-            {copiedLink ? (
-              <Check size={14} className="text-emerald-600 dark:text-emerald-400" />
-            ) : (
-              <MessageCircle size={14} className="text-emerald-600 dark:text-emerald-400 fill-emerald-100 dark:fill-emerald-950/50" />
-            )}
-            <span className="hidden sm:inline">{copiedLink ? 'Link Copied!' : 'WhatsApp Share & Copy Link'}</span>
-            <span className="sm:hidden">{copiedLink ? 'Copied' : 'WhatsApp'}</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setIsPrintOpen(true)}

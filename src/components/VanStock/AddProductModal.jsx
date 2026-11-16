@@ -18,16 +18,6 @@ import {
   generateAutoSku,
 } from '../../data/vanStockData';
 
-const HARDWARE_CATEGORIES = [
-  'Cables & Wires',
-  'Lighting & Lamps',
-  'Switchgear & Wiring',
-  'Plumbing & PVC',
-  'Tools & Hardware',
-  'Paints & Finishing',
-  'General Hardware',
-];
-
 const STANDARD_UNITS = [
   'Unit',
   'Roll',
@@ -43,12 +33,27 @@ const STANDARD_UNITS = [
 export default function AddProductModal({ isOpen, onClose, productToEdit = null }) {
   const saveProduct = useVanStockStore((s) => s.saveProduct);
   const products = useVanStockStore((s) => s.products);
+  const categories = useVanStockStore((s) => s.categories);
+  const fetchCategories = useVanStockStore((s) => s.fetchCategories);
+
+  const categoryList = useMemo(() => {
+    const set = new Set();
+    if (categories && categories.length > 0) {
+      categories.forEach((c) => {
+        if (c.name) set.add(c.name);
+      });
+    }
+    products.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set);
+  }, [categories, products]);
 
   const isEdit = Boolean(productToEdit);
 
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
-  const [category, setCategory] = useState(HARDWARE_CATEGORIES[0]);
+  const [category, setCategory] = useState(categoryList[0] || '');
   const [unit, setUnit] = useState(STANDARD_UNITS[0]);
   const [basePrice, setBasePrice] = useState('');
   const [companyDiscountPercent, setCompanyDiscountPercent] = useState('10');
@@ -59,10 +64,13 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
 
   useEffect(() => {
     if (isOpen) {
+      if (typeof fetchCategories === 'function') {
+        fetchCategories();
+      }
       if (productToEdit) {
         setSku(productToEdit.sku || '');
         setName(productToEdit.name || '');
-        setCategory(productToEdit.category || HARDWARE_CATEGORIES[0]);
+        setCategory(productToEdit.category || (categoryList.length > 0 ? categoryList[0] : ''));
         setUnit(productToEdit.unit || STANDARD_UNITS[0]);
         setBasePrice(String(productToEdit.basePrice || ''));
         setCompanyDiscountPercent(String(productToEdit.companyDiscountPercent ?? '0'));
@@ -71,7 +79,7 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
       } else {
         setSku('');
         setName('');
-        setCategory(HARDWARE_CATEGORIES[0]);
+        setCategory(categoryList.length > 0 ? categoryList[0] : '');
         setUnit(STANDARD_UNITS[0]);
         setBasePrice('');
         setCompanyDiscountPercent('10');
@@ -80,7 +88,7 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
       }
       setError('');
     }
-  }, [isOpen, productToEdit]);
+  }, [isOpen, productToEdit, fetchCategories]);
 
   const netUnitPrice = useMemo(() => {
     return calcNetUnitPrice(Number(basePrice) || 0, Number(companyDiscountPercent) || 0);
@@ -235,7 +243,7 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
                 label="Hardware Category"
                 value={category}
                 onChange={setCategory}
-                options={HARDWARE_CATEGORIES}
+                options={categoryList}
                 placeholder="Select category..."
                 portal
               />

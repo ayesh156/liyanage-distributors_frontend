@@ -301,7 +301,7 @@ export default function SignaturePadModal({
                 {title}
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Vehicle: <strong>{vehicleId}</strong> â€¢ Manifest: <strong>{manifestNo}</strong>
+                Vehicle: <strong>{vehicleId}</strong> * Manifest: <strong>{manifestNo}</strong>
               </p>
             </div>
           </div>

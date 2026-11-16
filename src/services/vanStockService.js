@@ -93,9 +93,6 @@ export function validateDamagedGoodsQuarantine({ quantity, reason, reportedBy })
   if (isNaN(qty) || qty <= 0) {
     throw new Error('Damaged quantity must be greater than zero (0).');
   }
-  if (!reason || !reason.trim()) {
-    throw new Error('A specific defect or damage reason is mandatory for quarantine logging.');
-  }
   if (!reportedBy || !reportedBy.trim()) {
     throw new Error('Reporting personnel name is required for audit traceability.');
   }

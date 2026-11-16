@@ -1,7 +1,37 @@
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { Clock } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ThemeToggle from './ThemeToggle';
 import UserMenu from './UserMenu';
+
+function LiveNavbarClock() {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const fullDateStr = time.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const timeStr = time.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  return (
+    <div className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-100/80 dark:bg-slate-700/60 border border-slate-200/80 dark:border-slate-600/60 text-slate-700 dark:text-slate-200 font-mono text-[11px] sm:text-xs shadow-2xs select-none">
+      <Clock size={13} className="text-accent-500 flex-shrink-0 animate-pulse" />
+      <span className="font-semibold text-slate-800 dark:text-slate-100 hidden md:inline">{fullDateStr},</span>
+      <span className="font-bold text-accent-700 dark:text-accent-300">{timeStr}</span>
+    </div>
+  );
+}
 
 const routeMeta = {
   '/': { title: 'Dashboard', subtitle: 'Overview of your business outstanding' },
@@ -63,8 +93,9 @@ export default function Layout() {
             </div>
           </div>
 
-          {/* Action controls (Theme switch + User popover) */}
+          {/* Action controls (Live Clock + Theme switch + User popover) */}
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <LiveNavbarClock />
             <ThemeToggle />
             <UserMenu />
           </div>

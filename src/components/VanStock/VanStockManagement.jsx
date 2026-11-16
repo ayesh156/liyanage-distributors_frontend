@@ -7,19 +7,20 @@
  * immutable stock movements, and universal SearchableSelect + DateFilterBar filtering.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Truck,
   AlertTriangle,
   TrendingUp,
   Plus,
+  ListPlus,
   ArrowRightLeft,
   RotateCcw,
   Receipt,
   Printer,
   Share2,
-  MessageCircle,
+  Package,
   PackageCheck,
   Search,
   Filter,
@@ -41,13 +42,19 @@ import {
   Calendar,
   Warehouse,
   MoreVertical,
+  ChevronLeft,
+  ChevronRight,
+  Sun,
+  Moon,
+  CheckSquare,
+  Square,
+  UserCheck,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import VanStockLayout from './VanStockLayout';
 import LoadVanStockModal from './LoadVanStockModal';
 import AddVanStockModal from './AddVanStockModal';
 import AddProductModal from './AddProductModal';
-import AdjustStockModal from './AdjustStockModal';
 import LogDamagedGoodsModal from './LogDamagedGoodsModal';
 import VehicleSalesModal from './VehicleSalesModal';
 import ReturnToStoreModal from './ReturnToStoreModal';
@@ -55,6 +62,7 @@ import PrintVanStockSheet from './PrintVanStockSheet';
 import PrintDamagedGoodsReport from './PrintDamagedGoodsReport';
 import EditVanItemQtyModal from './EditVanItemQtyModal';
 import OwnerSignatureModal from './OwnerSignatureModal';
+import SignaturePadModal from './SignaturePadModal';
 import SearchableSelect from '../ui/SearchableSelect';
 import {
   DropdownMenu,
@@ -64,10 +72,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '../ui/DropdownMenu';
-import DateFilterBar from './DateFilterBar';
 import useAppStore from '../../hooks/useAppStore';
-import useVanStockStore from '../../hooks/useVanStockStore';
-import { openWhatsAppChat, formatSriLankanWhatsAppNumber } from '../../utils/whatsapp';
+import useVanStockStore, { getOperatingDateStr } from '../../hooks/useVanStockStore';
 import { resolveServerImageUrl } from '../../utils/imageCompression';
 import {
   calcNetUnitPrice,
@@ -77,6 +83,195 @@ import {
   formatDateYYYYMMDD,
 } from '../../data/vanStockData';
 import { DEFAULT_OWNER_SIGNATURE } from '../../data/defaultOwnerSignature';
+
+/**
+ * Simple English human-readable movement labels & visual badges
+ */
+export function getHumanMovementLabel(type) {
+  switch (type) {
+    case 'VEHICLE_SALES_OUTBOUND':
+      return {
+        label: 'Van Sale',
+        badge: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60',
+      };
+    case 'STORE_TO_VEHICLE_LOAD':
+      return {
+        label: 'Loaded to Van',
+        badge: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60',
+      };
+    case 'VEHICLE_TO_STORE_RETURN':
+      return {
+        label: 'Returned to Store',
+        badge: 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/60',
+      };
+    case 'RETURN_TO_DAMAGED_POOL':
+      return {
+        label: 'Damaged Item',
+        badge: 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/60',
+      };
+    case 'SUPPLIER_PURCHASE_INBOUND':
+      return {
+        label: 'Stock Received',
+        badge: 'bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800/60',
+      };
+    case 'DAMAGED_WRITE_OFF':
+      return {
+        label: 'Damaged Write-Off',
+        badge: 'bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+      };
+    case 'WAREHOUSE_AUDIT_ADJUSTMENT':
+      return {
+        label: 'Audit Adjustment',
+        badge: 'bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800/60',
+      };
+    default:
+      return {
+        label: type ? type.replace(/_/g, ' ') : 'Movement',
+        badge: 'bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:text-slate-200',
+      };
+  }
+}
+
+/**
+ * Popover Calendar Date Picker supporting single-day and date-range selection
+ */
+function AuditCalendarPicker({ startDate, endDate, onSelectRange, onClose }) {
+  const [viewDate, setViewDate] = useState(() => {
+    return startDate ? new Date(startDate) : new Date();
+  });
+  const [rangeStart, setRangeStart] = useState(startDate || '');
+  const [rangeEnd, setRangeEnd] = useState(endDate || '');
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const calendarDays = [];
+  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
+
+  const handlePrevMonth = () => {
+    setViewDate(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setViewDate(new Date(year, month + 1, 1));
+  };
+
+  const handleDayClick = (day) => {
+    if (!day) return;
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (!rangeStart || (rangeStart && rangeEnd)) {
+      setRangeStart(dateStr);
+      setRangeEnd('');
+    } else {
+      if (dateStr < rangeStart) {
+        setRangeEnd(rangeStart);
+        setRangeStart(dateStr);
+      } else {
+        setRangeEnd(dateStr);
+      }
+    }
+  };
+
+  const handleApply = () => {
+    onSelectRange(rangeStart, rangeEnd || rangeStart);
+    onClose();
+  };
+
+  const handleClear = () => {
+    setRangeStart('');
+    setRangeEnd('');
+    onSelectRange('', '');
+    onClose();
+  };
+
+  return (
+    <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-2xl w-72 text-xs space-y-2.5 z-50">
+      <div className="flex items-center justify-between">
+        <span className="font-bold text-slate-800 dark:text-slate-100">
+          {monthNames[month]} {year}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center font-bold text-[10px] text-slate-400">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+          <div key={d}>{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {calendarDays.map((d, idx) => {
+          if (!d) return <div key={idx} />;
+          const curStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const isStart = rangeStart === curStr;
+          const isEnd = rangeEnd === curStr;
+          const inRange = rangeStart && rangeEnd && curStr >= rangeStart && curStr <= rangeEnd;
+          const isToday = curStr === new Date().toISOString().slice(0, 10);
+
+          let cls = 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200';
+          if (isStart || isEnd) {
+            cls = 'bg-accent-600 text-white font-bold rounded-lg';
+          } else if (inRange) {
+            cls = 'bg-accent-100 dark:bg-accent-950/60 text-accent-800 dark:text-accent-200 rounded-md';
+          }
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleDayClick(d)}
+              className={`h-7 w-full flex items-center justify-center text-xs transition-colors cursor-pointer relative ${cls} ${isToday && !inRange && !isStart ? 'border border-accent-400 font-bold' : ''}`}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
+        <button
+          type="button"
+          onClick={handleClear}
+          className="text-slate-500 hover:text-rose-500 cursor-pointer"
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={!rangeStart}
+          className="px-3 py-1 rounded-lg bg-accent-600 hover:bg-accent-700 text-white font-semibold disabled:opacity-40 cursor-pointer"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Safely formats movement audit timestamps to standard YYYY-MM-DD hh:mm a.
@@ -106,6 +301,196 @@ function deriveItemLoadDate(item) {
   return formatDateYYYYMMDD(item?.createdAt);
 }
 
+/**
+ * Resolves day name ('Mon', 'Tue', ...) to a deterministic YYYY-MM-DD date in the current week.
+ * Assumes Monday-Sunday operating week.
+ */
+function getDateForDayOfWeek(dayName) {
+  if (!dayName || dayName === 'ALL') return null;
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const targetDayIdx = dayNames.indexOf(dayName);
+  if (targetDayIdx === -1) return null;
+
+  const now = new Date();
+  const currentDayIdx = now.getDay();
+
+  // Convert to 1-7 (Mon=1 ... Sun=7)
+  const currentIsoDay = currentDayIdx === 0 ? 7 : currentDayIdx;
+  const targetIsoDay = targetDayIdx === 0 ? 7 : targetDayIdx;
+  const diffDays = targetIsoDay - currentIsoDay;
+
+  const targetDate = new Date(now);
+  targetDate.setDate(now.getDate() + diffDays);
+  return formatDateYYYYMMDD(targetDate);
+}
+
+/**
+ * Determines the earliest known load or creation date for a Van Stock item.
+ * Evaluates stock movements, explicit loadDate, manifest patterns, or createdAt.
+ */
+function getItemFirstLoadedDate(item, stockMovements = []) {
+  if (!item) return null;
+
+  // 1. Earliest STORE_TO_VEHICLE_LOAD movement for this product/sku
+  if (Array.isArray(stockMovements) && stockMovements.length > 0) {
+    const pid = item.productId || item.id;
+    const sku = item.sku;
+    const loads = stockMovements.filter(
+      (m) =>
+        m.movementType === 'STORE_TO_VEHICLE_LOAD' &&
+        ((pid && (Number(m.productId) === Number(pid) || m.productId === pid)) ||
+         (sku && m.sku && m.sku.toLowerCase() === sku.toLowerCase()))
+    );
+    if (loads.length > 0) {
+      let earliestDate = null;
+      loads.forEach((m) => {
+        const raw = m.timestamp || m.createdAt;
+        if (raw) {
+          const dStr = formatDateYYYYMMDD(raw);
+          if (dStr && (!earliestDate || dStr < earliestDate)) {
+            earliestDate = dStr;
+          }
+        }
+      });
+      if (earliestDate) return earliestDate;
+    }
+  }
+
+  // 2. Explicit loadDate
+  if (item.loadDate) {
+    const dStr = formatDateYYYYMMDD(item.loadDate);
+    if (dStr) return dStr;
+  }
+
+  // 3. Manifest number pattern MAN-YYYYMMDD-01
+  const manifest = item.manifestNo || item.sourceManifestNo || '';
+  const match = String(manifest).match(/MAN-(\d{4})(\d{2})(\d{2})/);
+  if (match) {
+    return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+
+  // 4. Initial createdAt
+  if (item.createdAt) {
+    const dStr = formatDateYYYYMMDD(item.createdAt);
+    if (dStr) return dStr;
+  }
+
+  return null;
+}
+
+/**
+ * Unified Modern Day of Week Pills & Shadcn Popover Calendar Filter
+ */
+function UnifiedDayPillsCalendarFilter({
+  selectedDayOfWeek,
+  onSelectDayOfWeek,
+  calendarDateRange,
+  onSelectDateRange,
+  onReset,
+  label = 'Date Filter',
+  resultCount,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const isTodaySelected = calendarDateRange.start === todayStr && calendarDateRange.end === todayStr;
+
+  return (
+    <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {/* Day of Week Pills (Today, ALL, Mon - Sun) */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
+          <Calendar size={13} className="text-accent-500" />
+          <span>{label}:</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            onSelectDateRange({ start: todayStr, end: todayStr });
+            onSelectDayOfWeek('ALL');
+          }}
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            isTodaySelected
+              ? 'bg-accent-600 text-white shadow-xs'
+              : 'bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 hover:bg-accent-100'
+          }`}
+        >
+          Today
+        </button>
+        {['ALL', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
+          const isSelected = selectedDayOfWeek === day;
+          return (
+            <button
+              key={day}
+              type="button"
+              onClick={() => onSelectDayOfWeek(day)}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                isSelected
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs font-bold'
+                  : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Calendar Date Range Picker Popover Trigger + Result count + Reset */}
+      <div className="flex items-center gap-2 relative">
+        {resultCount !== undefined && (
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline mr-1">
+            {resultCount} item{resultCount === 1 ? '' : 's'}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+            calendarDateRange.start
+              ? 'border-accent-500 bg-accent-50/50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 font-bold'
+              : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Calendar size={14} />
+          <span>
+            {calendarDateRange.start
+              ? `${calendarDateRange.start}${calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start ? ` to ${calendarDateRange.end}` : ''}`
+              : 'Pick Date Range'}
+          </span>
+        </button>
+
+        {(selectedDayOfWeek !== 'ALL' || calendarDateRange.start) && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="px-2 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+          >
+            Reset
+          </button>
+        )}
+
+        {/* Popover Calendar Picker */}
+        {isOpen && (
+          <div className="absolute right-0 top-full mt-2 z-50">
+            <AuditCalendarPicker
+              startDate={calendarDateRange.start}
+              endDate={calendarDateRange.end}
+              isOpen={isOpen}
+              onClose={() => setIsOpen(false)}
+              onSelectRange={(start, end) => {
+                onSelectDateRange({ start, end });
+                onSelectDayOfWeek('ALL');
+                setIsOpen(false);
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function VanStockManagement() {
   const navigate = useNavigate();
 
@@ -119,15 +504,45 @@ export default function VanStockManagement() {
   const damagedGoods = useVanStockStore((s) => s.damagedGoods);
   const stockMovements = useVanStockStore((s) => s.stockMovements);
   const dailyManifest = useVanStockStore((s) => s.dailyManifest);
+  const manifestHistory = useVanStockStore((s) => s.manifestHistory);
   const ownerSignatureData = useVanStockStore((s) => s.ownerSignatureData);
-  const activeTab = useVanStockStore((s) => s.activeTab);
-  const setActiveTab = useVanStockStore((s) => s.setActiveTab);
+  const categories = useVanStockStore((s) => s.categories);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get('tab');
+  const storeActiveTab = useVanStockStore((s) => s.activeTab);
+  const setStoreActiveTab = useVanStockStore((s) => s.setActiveTab);
+  const activeTab = urlTab || storeActiveTab || 'on-hand';
+
+  const setActiveTab = (tab) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', tab);
+        return next;
+      },
+      { replace: true }
+    );
+    setStoreActiveTab(tab);
+  };
   const getKpis = useVanStockStore((s) => s.getKpis);
   const getRestockRequirements = useVanStockStore((s) => s.getRestockRequirements);
   const resolveDamagedRecord = useVanStockStore((s) => s.resolveDamagedRecord);
   const dispatchDailyManifest = useVanStockStore((s) => s.dispatchDailyManifest);
   const reDispatchManifest = useVanStockStore((s) => s.reDispatchManifest);
   const fetchInitialData = useVanStockStore((s) => s.fetchInitialData);
+  const toggleRepItemChecked = useVanStockStore((s) => s.toggleRepItemChecked);
+  const toggleEveningItemChecked = useVanStockStore((s) => s.toggleEveningItemChecked);
+  const toggleAllRepItemsChecked = useVanStockStore((s) => s.toggleAllRepItemsChecked);
+  const toggleAllEveningItemsChecked = useVanStockStore((s) => s.toggleAllEveningItemsChecked);
+  const getManifestForDate = useVanStockStore((s) => s.getManifestForDate);
+  const fetchDailyManifest = useVanStockStore((s) => s.fetchDailyManifest);
+  const submitRepVerificationWithSignature = useVanStockStore((s) => s.submitRepVerificationWithSignature);
+  const setOwnerSignatureData = useVanStockStore((s) => s.setOwnerSignatureData);
+  const fetchSavedSignatures = useVanStockStore((s) => s.fetchSavedSignatures);
+  const saveSignatureSetting = useVanStockStore((s) => s.saveSignatureSetting);
+  const savedOwnerSignature = useVanStockStore((s) => s.savedOwnerSignature);
+  const savedRepSignature = useVanStockStore((s) => s.savedRepSignature);
+  const saveEveningReconciliation = useVanStockStore((s) => s.saveEveningReconciliation);
 
   useEffect(() => {
     fetchInitialData();
@@ -148,50 +563,240 @@ export default function VanStockManagement() {
   // Row-level product context selected from 3-dots action menus for operational modals
   const [selectedContextProduct, setSelectedContextProduct] = useState(null);
 
+  // In-App Unified Digital Signing State
+  const [signingModalRole, setSigningModalRole] = useState(null); // 'owner' | 'rep' | null
+  const [useSavedOwnerSig, setUseSavedOwnerSig] = useState(false);
+  const [useSavedRepSig, setUseSavedRepSig] = useState(false);
+
   // Local filtering & date states
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [vanApprovalFilter, setVanApprovalFilter] = useState('ALL');
-  const [priorityTierFilter, setPriorityTierFilter] = useState('ALL');
   const [defectStatusFilter, setDefectStatusFilter] = useState('ALL');
   const [movementTypeFilter, setMovementTypeFilter] = useState('ALL');
 
-  // Unified Date Filter states per context
+  // Unified Date Filter states (Day of Week Pills & Shadcn Popover Calendar)
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState('ALL'); // 'ALL' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
+  const [calendarDateRange, setCalendarDateRange] = useState({ start: '', end: '' });
   const [datePreset, setDatePreset] = useState('ALL');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [damageDateFilterMode, setDamageDateFilterMode] = useState('LOGGED'); // 'LOGGED' | 'LOAD_DATE'
   const [showResolvedHistory, setShowResolvedHistory] = useState(false); // Toggle Active vs Resolved Damaged History
 
-  const [copiedLink, setCopiedLink] = useState(false);
+  // Today reference string (YYYY-MM-DD)
+  const todayStr = useMemo(() => getOperatingDateStr(new Date()), []);
 
-  // Computed KPIs & Restock Data
+  // Derive active operating date string (YYYY-MM-DD)
+  const activeOperatingDate = useMemo(() => {
+    if (calendarDateRange.start) return calendarDateRange.start;
+    if (selectedDayOfWeek !== 'ALL') {
+      const dStr = getDateForDayOfWeek(selectedDayOfWeek);
+      if (dStr) return dStr;
+    }
+    if (customStart) return customStart;
+    return todayStr;
+  }, [calendarDateRange.start, selectedDayOfWeek, customStart, todayStr]);
+
+  // Is viewing a past date filter
+  const isViewingPastDate = useMemo(() => {
+    const isFiltered = Boolean(calendarDateRange.start || selectedDayOfWeek !== 'ALL');
+    return isFiltered && Boolean(activeOperatingDate && activeOperatingDate < todayStr);
+  }, [calendarDateRange.start, selectedDayOfWeek, activeOperatingDate, todayStr]);
+
+  // Local date-bound checklist state strictly isolated to the active operating date
+  const [localMorningChecks, setLocalMorningChecks] = useState({});
+  const [localEveningChecks, setLocalEveningChecks] = useState({});
+
+  const isItemCheckedMorning = useCallback((itemOrId) => {
+    if (!itemOrId) return false;
+    const idKey = typeof itemOrId === 'object' ? String(itemOrId.id || '') : String(itemOrId);
+    const pidKey = typeof itemOrId === 'object' && itemOrId.productId ? String(itemOrId.productId) : String(itemOrId);
+    const skuKey = typeof itemOrId === 'object' && itemOrId.sku ? String(itemOrId.sku) : null;
+    return Boolean(
+      localMorningChecks[idKey] ||
+      localMorningChecks[pidKey] ||
+      (skuKey && localMorningChecks[skuKey])
+    );
+  }, [localMorningChecks]);
+
+  const isItemCheckedEvening = useCallback((itemOrId) => {
+    if (!itemOrId) return false;
+    const idKey = typeof itemOrId === 'object' ? String(itemOrId.id || '') : String(itemOrId);
+    const pidKey = typeof itemOrId === 'object' && itemOrId.productId ? String(itemOrId.productId) : String(itemOrId);
+    const skuKey = typeof itemOrId === 'object' && itemOrId.sku ? String(itemOrId.sku) : null;
+    return Boolean(
+      localEveningChecks[idKey] ||
+      localEveningChecks[pidKey] ||
+      (skuKey && localEveningChecks[skuKey])
+    );
+  }, [localEveningChecks]);
+
+  // Strictly date-bound checklist toggle handlers
+  const handleToggleCheck = (item) => {
+    const pid = item.productId || item.id;
+    const idKey = String(item.id);
+    const pidKey = item.productId ? String(item.productId) : null;
+    const skuKey = item.sku || null;
+    const currentVal = isItemCheckedMorning(item);
+    const nextVal = !currentVal;
+
+    setLocalMorningChecks((prev) => {
+      const updated = { ...prev };
+      if (nextVal) {
+        updated[idKey] = true;
+        if (pidKey) updated[pidKey] = true;
+        if (skuKey) updated[skuKey] = true;
+      } else {
+        delete updated[idKey];
+        if (pidKey) delete updated[pidKey];
+        if (skuKey) delete updated[skuKey];
+      }
+      return updated;
+    });
+
+    toggleRepItemChecked(pid, activeOperatingDate, nextVal);
+  };
+
+  const handleToggleEveningReconciled = (item) => {
+    const pid = item.productId || item.id;
+    const idKey = String(item.id);
+    const pidKey = item.productId ? String(item.productId) : null;
+    const skuKey = item.sku || null;
+    const currentVal = isItemCheckedEvening(item);
+    const nextVal = !currentVal;
+
+    setLocalEveningChecks((prev) => {
+      const updated = { ...prev };
+      if (nextVal) {
+        updated[idKey] = true;
+        if (pidKey) updated[pidKey] = true;
+        if (skuKey) updated[skuKey] = true;
+      } else {
+        delete updated[idKey];
+        if (pidKey) delete updated[pidKey];
+        if (skuKey) delete updated[skuKey];
+      }
+      return updated;
+    });
+
+    toggleEveningItemChecked(pid, activeOperatingDate, nextVal);
+  };
+
+  // Strictly wipe UI local checklist states and synchronize manifest state on operatingDate change
+  useEffect(() => {
+    setLocalMorningChecks({});
+    setLocalEveningChecks({});
+    setSelectedContextProduct(null);
+    setSelectedVanItemToEdit(null);
+    setSigningModalRole(null);
+
+    if (vehicle?.id && activeOperatingDate) {
+      fetchDailyManifest(vehicle.id, activeOperatingDate);
+    }
+  }, [vehicle?.id, activeOperatingDate, fetchDailyManifest]);
+
+  // Active manifest bound strictly to operating date
+  const activeManifest = useMemo(() => {
+    return getManifestForDate(activeOperatingDate);
+  }, [getManifestForDate, activeOperatingDate, dailyManifest, manifestHistory]);
+
+  // Hydrate local checklist states strictly when activeManifest matches activeOperatingDate
+  useEffect(() => {
+    if (!activeManifest) {
+      setLocalMorningChecks({});
+      setLocalEveningChecks({});
+      return;
+    }
+
+    const manifestDateStr = getOperatingDateStr(activeManifest.manifestDate || activeManifest.createdAt);
+    if (manifestDateStr !== activeOperatingDate) {
+      setLocalMorningChecks({});
+      setLocalEveningChecks({});
+      return;
+    }
+
+    const nextMorning = {};
+    const nextEvening = {};
+
+    // 1. Read from manifest.morningCheckedItems
+    const rawMorning = activeManifest.morningCheckedItems;
+    const morningList = Array.isArray(rawMorning)
+      ? rawMorning.map(String)
+      : (rawMorning && typeof rawMorning === 'object' ? Object.keys(rawMorning).filter((k) => Boolean(rawMorning[k])) : []);
+
+    morningList.forEach((ident) => {
+      nextMorning[ident] = true;
+    });
+
+    // 2. Read from manifest.eveningCheckedItems
+    const rawEvening = activeManifest.eveningCheckedItems;
+    const eveningList = Array.isArray(rawEvening)
+      ? rawEvening.map(String)
+      : (rawEvening && typeof rawEvening === 'object' ? Object.keys(rawEvening).filter((k) => Boolean(rawEvening[k])) : []);
+
+    eveningList.forEach((ident) => {
+      nextEvening[ident] = true;
+    });
+
+    // 3. Fallback / supplement from itemsSnapshot
+    if (Array.isArray(activeManifest.itemsSnapshot)) {
+      activeManifest.itemsSnapshot.forEach((s) => {
+        if (s) {
+          if (s.repChecked) {
+            if (s.id) nextMorning[String(s.id)] = true;
+            if (s.productId) nextMorning[String(s.productId)] = true;
+            if (s.sku) nextMorning[String(s.sku)] = true;
+          }
+          if (s.eveningReconciled) {
+            if (s.id) nextEvening[String(s.id)] = true;
+            if (s.productId) nextEvening[String(s.productId)] = true;
+            if (s.sku) nextEvening[String(s.sku)] = true;
+          }
+        }
+      });
+    }
+
+    setLocalMorningChecks(nextMorning);
+    setLocalEveningChecks(nextEvening);
+  }, [activeManifest, activeOperatingDate]);
+
+  // Strict date verification for signatures: did the official signature stamp occur on the active operating date?
+  const isOwnerSignedForActiveDate = useMemo(() => {
+    if (!activeManifest?.ownerSignedAt) return false;
+    return getOperatingDateStr(activeManifest.ownerSignedAt) === activeOperatingDate;
+  }, [activeManifest, activeOperatingDate]);
+
+  const isRepSignedForActiveDate = useMemo(() => {
+    if (!activeManifest?.repSignedAt || !activeManifest?.repSignatureData) return false;
+    return getOperatingDateStr(activeManifest.repSignedAt) === activeOperatingDate;
+  }, [activeManifest, activeOperatingDate]);
+
+
+  // Computed KPIs
   const kpis = getKpis();
-  const restockRequirements = getRestockRequirements();
 
   // Master categories list for SearchableSelect
   const categoryOptions = useMemo(() => {
-    const set = new Set(products.map((p) => p.category || 'General'));
+    const set = new Set();
+    if (categories && categories.length > 0) {
+      categories.forEach((c) => {
+        if (c.name) set.add(c.name);
+      });
+    }
+    products.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
     const list = [{ value: 'ALL', label: 'All Categories' }];
     set.forEach((cat) => list.push({ value: cat, label: cat }));
     return list;
-  }, [products]);
+  }, [categories, products]);
 
   // Van Approval Status options
   const vanApprovalOptions = [
     { value: 'ALL', label: 'All Verification Statuses' },
     { value: 'PENDING_CONFIRMATION', label: 'Pending Rep Sign-Off' },
     { value: 'APPROVED', label: 'Verified & Approved' },
-  ];
-
-  // Restock Priority Tier options
-  const priorityTierOptions = [
-    { value: 'ALL', label: 'All Priority Tiers' },
-    { value: 'CRITICAL (OUT)', label: 'Critical Out (0 Units)' },
-    { value: 'CRITICAL', label: 'Critical Buffer Shortage' },
-    { value: 'MODERATE', label: 'Moderate Shortage' },
-    { value: 'OPTIMAL', label: 'Optimal Par Level' },
-    { value: 'OVERSTOCKED', label: 'Overstocked Capacity' },
   ];
 
   // Defect Status options dynamically adapted to active vs resolved history mode
@@ -210,23 +815,23 @@ export default function VanStockManagement() {
     ];
   }, [showResolvedHistory]);
 
-  // Movement Types options
+  // Movement Types options with Simple English labels
   const movementTypeOptions = [
-    { value: 'ALL', label: 'All Movement Types' },
-    { value: 'STORE_TO_VEHICLE_LOAD', label: 'Store -> Van Load' },
-    { value: 'VEHICLE_TO_STORE_RETURN', label: 'Van -> Store Return' },
-    { value: 'VEHICLE_SALES_OUTBOUND', label: 'Road Sales Outbound' },
-    { value: 'RETURN_TO_DAMAGED_POOL', label: 'Quarantined Damaged Pool' },
-    { value: 'WAREHOUSE_AUDIT_ADJUSTMENT', label: 'Warehouse Audit Adjustment' },
-    { value: 'SUPPLIER_PURCHASE_INBOUND', label: 'Supplier Purchase Inbound' },
-    { value: 'DAMAGED_WRITE_OFF', label: 'Damaged Scrap Write-Off' },
+    { value: 'ALL', label: 'All Movements' },
+    { value: 'VEHICLE_SALES_OUTBOUND', label: 'Van Sale' },
+    { value: 'STORE_TO_VEHICLE_LOAD', label: 'Loaded to Van' },
+    { value: 'VEHICLE_TO_STORE_RETURN', label: 'Returned to Store' },
+    { value: 'RETURN_TO_DAMAGED_POOL', label: 'Damaged Item' },
+    { value: 'SUPPLIER_PURCHASE_INBOUND', label: 'Stock Received' },
+    { value: 'DAMAGED_WRITE_OFF', label: 'Damaged Write-Off' },
+    { value: 'WAREHOUSE_AUDIT_ADJUSTMENT', label: 'Audit Adjustment' },
   ];
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -------------------------------------------------------------
   // FILTERED TAB DATASETS (WITH DATE-RANGE & SEARCHABLE LOGIC)
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -------------------------------------------------------------
 
-  // Filtered On-Hand Van Stock (Perpetual Inventory: displays all SKUs where quantity > 0 disregarding dates)
+  // Filtered On-Hand Van Stock (Perpetual Inventory with Date-Bound Past Filter)
   const filteredVanStock = useMemo(() => {
     return vanStock.filter((item) => {
       if (item.quantity <= 0) return false;
@@ -243,28 +848,17 @@ export default function VanStockManagement() {
       const matchApproval =
         vanApprovalFilter === 'ALL' || item.status === vanApprovalFilter;
 
+      // Temporal Filter: When viewing a past date, hide SKUs first loaded AFTER that date
+      if (isViewingPastDate && activeOperatingDate) {
+        const firstLoadDate = getItemFirstLoadedDate(item, stockMovements);
+        if (firstLoadDate && firstLoadDate > activeOperatingDate) {
+          return false;
+        }
+      }
+
       return matchSearch && matchCategory && matchApproval;
     });
-  }, [vanStock, products, searchQuery, categoryFilter, vanApprovalFilter]);
-
-  // Filtered Restock Requirements
-  const filteredRestockItems = useMemo(() => {
-    return restockRequirements.filter((item) => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchSearch =
-        !q ||
-        item.name.toLowerCase().includes(q) ||
-        item.sku.toLowerCase().includes(q);
-
-      const matchCategory =
-        categoryFilter === 'ALL' || item.category === categoryFilter;
-
-      const matchPriority =
-        priorityTierFilter === 'ALL' || item.priority.level === priorityTierFilter;
-
-      return matchSearch && matchCategory && matchPriority;
-    });
-  }, [restockRequirements, searchQuery, categoryFilter, priorityTierFilter]);
+  }, [vanStock, products, searchQuery, categoryFilter, vanApprovalFilter, isViewingPastDate, activeOperatingDate, stockMovements]);
 
   // Active vs Resolved Damaged Goods Lists
   const activeDamagedGoodsList = useMemo(() => {
@@ -305,22 +899,74 @@ export default function VanStockManagement() {
         ? deriveItemLoadDate(item)
         : item.createdAt;
 
-      const matchDate = isDateInPreset(targetDate, datePreset, customStart, customEnd);
+      // Date matching against calendar date range and day of week
+      let matchDate = true;
+      if (calendarDateRange.start) {
+        const dtStr = formatDateYYYYMMDD(targetDate);
+        if (calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start) {
+          matchDate = dtStr >= calendarDateRange.start && dtStr <= calendarDateRange.end;
+        } else {
+          matchDate = dtStr === calendarDateRange.start;
+        }
+      } else if (selectedDayOfWeek !== 'ALL') {
+        const dt = new Date(targetDate);
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        matchDate = dayNames[dt.getDay()] === selectedDayOfWeek;
+      }
 
       return matchSearch && matchStatus && matchDate;
     });
-  }, [showResolvedHistory, activeDamagedGoodsList, resolvedDamagedGoodsList, searchQuery, defectStatusFilter, damageDateFilterMode, datePreset, customStart, customEnd]);
+  }, [showResolvedHistory, activeDamagedGoodsList, resolvedDamagedGoodsList, searchQuery, defectStatusFilter, damageDateFilterMode, calendarDateRange, selectedDayOfWeek]);
 
-  // Filtered Stock Movements
+  // Grouped Stock Movements: consolidate VEHICLE_SALES_OUTBOUND by Date (YYYY-MM-DD) and SKU
+  const groupedMovements = useMemo(() => {
+    const roadSalesMap = new Map();
+    const otherMovements = [];
+
+    stockMovements.forEach((m) => {
+      if (m.movementType === 'VEHICLE_SALES_OUTBOUND') {
+        const rawTime = m.timestamp || m.createdAt || new Date().toISOString();
+        const dateKey = new Date(rawTime).toISOString().slice(0, 10);
+        const skuKey = m.sku || String(m.productId);
+        const groupKey = `${dateKey}_${skuKey}`;
+
+        if (!roadSalesMap.has(groupKey)) {
+          roadSalesMap.set(groupKey, {
+            ...m,
+            id: `road_sale_${groupKey}`,
+            movementType: 'VEHICLE_SALES_OUTBOUND',
+            sourceLocation: m.sourceLocation || 'VAN-01',
+            targetLocation: 'Road Sales',
+            quantity: 0,
+            timestamp: rawTime,
+            createdAt: rawTime,
+            isGrouped: true,
+            groupedDate: dateKey,
+          });
+        }
+        const currentGroup = roadSalesMap.get(groupKey);
+        currentGroup.quantity += Number(m.quantity) || 0;
+      } else {
+        otherMovements.push(m);
+      }
+    });
+
+    const consolidated = [...Array.from(roadSalesMap.values()), ...otherMovements];
+    return consolidated.sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.createdAt).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt).getTime();
+      return timeB - timeA;
+    });
+  }, [stockMovements]);
+
+  // Filtered Stock Movements (incorporates Day of Week and Calendar Picker)
   const filteredMovements = useMemo(() => {
-    return stockMovements.filter((m) => {
+    return groupedMovements.filter((m) => {
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
         !q ||
         m.productName.toLowerCase().includes(q) ||
-        m.sku.toLowerCase().includes(q) ||
-        (m.reference && m.reference.toLowerCase().includes(q)) ||
-        (m.performedBy && m.performedBy.toLowerCase().includes(q));
+        (m.sku && m.sku.toLowerCase().includes(q));
 
       const matchType =
         movementTypeFilter === 'ALL' || m.movementType === movementTypeFilter;
@@ -329,9 +975,79 @@ export default function VanStockManagement() {
       const rawTime = m.timestamp || m.createdAt;
       const matchDate = isDateInPreset(rawTime, datePreset, customStart, customEnd);
 
-      return matchSearch && matchType && matchDate;
+      // Day of Week filter (Mon - Sun)
+      let matchDay = true;
+      if (selectedDayOfWeek !== 'ALL') {
+        const dt = new Date(rawTime);
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        matchDay = dayNames[dt.getDay()] === selectedDayOfWeek;
+      }
+
+      // Calendar Date Range filter
+      let matchCalendar = true;
+      if (calendarDateRange.start) {
+        const dtStr = new Date(rawTime).toISOString().slice(0, 10);
+        if (calendarDateRange.end) {
+          matchCalendar = dtStr >= calendarDateRange.start && dtStr <= calendarDateRange.end;
+        } else {
+          matchCalendar = dtStr === calendarDateRange.start;
+        }
+      }
+
+      return matchSearch && matchType && matchDate && matchDay && matchCalendar;
     });
-  }, [stockMovements, searchQuery, movementTypeFilter, datePreset, customStart, customEnd]);
+  }, [groupedMovements, searchQuery, movementTypeFilter, datePreset, customStart, customEnd, selectedDayOfWeek, calendarDateRange]);
+
+  // Item-Wise Total Summary calculation for Audit History
+  const movementItemTotals = useMemo(() => {
+    const map = {};
+    filteredMovements.forEach((m) => {
+      const key = m.productId || m.sku || m.productName;
+      if (!map[key]) {
+        map[key] = {
+          productId: m.productId,
+          productName: m.productName,
+          sku: m.sku,
+          totalUnits: 0,
+          vanSales: 0,
+          loaded: 0,
+          returned: 0,
+          damaged: 0,
+          received: 0,
+          count: 0,
+        };
+      }
+      map[key].totalUnits += m.quantity;
+      map[key].count += 1;
+      if (m.movementType === 'VEHICLE_SALES_OUTBOUND') map[key].vanSales += m.quantity;
+      else if (m.movementType === 'STORE_TO_VEHICLE_LOAD') map[key].loaded += m.quantity;
+      else if (m.movementType === 'VEHICLE_TO_STORE_RETURN') map[key].returned += m.quantity;
+      else if (m.movementType === 'RETURN_TO_DAMAGED_POOL') map[key].damaged += m.quantity;
+      else if (m.movementType === 'SUPPLIER_PURCHASE_INBOUND') map[key].received += m.quantity;
+    });
+    return Object.values(map).sort((a, b) => b.totalUnits - a.totalUnits);
+  }, [filteredMovements]);
+
+  const handleSelectToday = () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    setCalendarDateRange({ start: todayStr, end: todayStr });
+    setSelectedDayOfWeek('ALL');
+    setDatePreset('ALL');
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+  const handleSelectDayOfWeek = (day) => {
+    setSelectedDayOfWeek(day);
+  };
+
+  const handleResetAuditDateFilters = () => {
+    setSelectedDayOfWeek('ALL');
+    setCalendarDateRange({ start: '', end: '' });
+    setDatePreset('ALL');
+    setCustomStart('');
+    setCustomEnd('');
+  };
 
   /**
    * Dynamically resolves active Route from the live database/store collection.
@@ -381,90 +1097,44 @@ export default function VanStockManagement() {
     vehicle?.repName ||
     'Unassigned';
 
-  /**
-   * Dispatches the daily delivery van manifest link directly to the assigned Sales Representative via WhatsApp.
-   * Resolves the representative's dynamic phone number from the database and invokes openWhatsAppChat.
-   */
-  const handleWhatsApp = async () => {
-    const manifestCode =
-      dailyManifest?.manifestNo ||
-      `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
-    const shareUrl = `${window.location.origin}/share/van-manifest/${manifestCode}`;
-    // Clean text template without emojis to prevent device-specific Mojibake and encoding corruption
-    const message = `Today's Delivery Van Manifest (${manifestCode}) is ready for your verification:\n\n${shareUrl}`;
 
-    // Always copy link to clipboard for convenience
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
-    } catch (_clipErr) {
-      // ignore
-    }
-
-    if (!dynamicRepPhone) {
-      toast.warning(`No phone number registered for ${dynamicRepName}. Manifest link copied to clipboard.`);
-      toast.info(`Manifest URL: ${shareUrl}`);
-      return;
-    }
-
-    // Pass dynamic phone and manifest dispatch message into openWhatsAppChat utility
-    const whatsappUrl = openWhatsAppChat(dynamicRepPhone, message);
-    if (whatsappUrl) {
-      toast.success(
-        `WhatsApp launched for ${dynamicRepName} (${dynamicRepPhone}) & link copied!`
-      );
-    } else {
-      toast.error(`Invalid phone number format for ${dynamicRepName} (${dynamicRepPhone}).`);
-    }
-  };
-
-  /**
-   * Alias for handleWhatsApp to support backward-compatible naming conventions.
-   */
-  const handleShareManifest = handleWhatsApp;
 
   // Discrepancy items computation: dynamically reflects current items and manifest status
   const uncheckedByRepItems = useMemo(() => {
     // If manifest is fully verified / rep accepted, zero discrepancy items exist
-    if (dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED') return [];
+    const manStatus = activeManifest?.status;
+    if (manStatus === 'FULLY_VERIFIED' || manStatus === 'REP_ACCEPTED' || manStatus === 'VERIFIED') return [];
     return vanStock.filter(
-      (i) => i.quantity > 0 && (i.status === 'UNVERIFIED_BY_REP' || i.discrepancyFlag || (!i.repChecked && dailyManifest?.status === 'PARTIAL_DISCREPANCY'))
+      (i) => i.quantity > 0 && (i.status === 'UNVERIFIED_BY_REP' || i.discrepancyFlag || (!isItemCheckedMorning(i) && manStatus === 'PARTIAL_DISCREPANCY'))
     );
-  }, [vanStock, dailyManifest]);
-  const hasDiscrepancy = dailyManifest?.status === 'PARTIAL_DISCREPANCY' && uncheckedByRepItems.length > 0;
+  }, [vanStock, activeManifest, isItemCheckedMorning]);
+  const hasDiscrepancy = activeManifest?.status === 'PARTIAL_DISCREPANCY' && uncheckedByRepItems.length > 0;
 
   // Dynamic pending confirmation count reflecting current items & manifest status (cleared once signed/verified)
   const pendingConfirmationCount = useMemo(() => {
+    const manStatus = activeManifest?.status;
     if (
-      dailyManifest?.status === 'FULLY_VERIFIED' ||
-      dailyManifest?.status === 'REP_ACCEPTED' ||
-      dailyManifest?.status === 'VERIFIED' ||
-      dailyManifest?.status === 'PARTIAL_DISCREPANCY'
+      manStatus === 'FULLY_VERIFIED' ||
+      manStatus === 'REP_ACCEPTED' ||
+      manStatus === 'VERIFIED' ||
+      manStatus === 'PARTIAL_DISCREPANCY'
     ) return 0;
     return vanStock.filter(
-      (i) => i.quantity > 0 && i.isActive !== false && (i.status === 'PENDING_CONFIRMATION' && !i.repChecked)
+      (i) => i.quantity > 0 && i.isActive !== false && (i.status === 'PENDING_CONFIRMATION' && !isItemCheckedMorning(i))
     ).length;
-  }, [vanStock, dailyManifest]);
+  }, [vanStock, activeManifest, isItemCheckedMorning]);
 
-  // Re-Dispatch Manifest Loop: asynchronous handler with valid manifest route generation
+  // Re-Dispatch Manifest Loop: asynchronous handler with in-app dispatch confirmation
   const handleReDispatch = async () => {
     const result = await reDispatchManifest({
       dispatcherName: 'W. Liyanage (Managing Director / Owner)',
       notes: `Updated manifest re-dispatched to ${vehicle.id} after quantity reconciliation`,
     });
-    // Safely resolve unique manifest number from result or active store state
     const manifestNo =
       result?.manifest?.manifestNo ||
       dailyManifest?.manifestNo ||
       `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
-    const shareUrl = `${window.location.origin}/share/van-manifest/${manifestNo}`;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success(`Manifest ${manifestNo} link copied to clipboard.`);
-    } catch {
-      toast.info(`Manifest ${manifestNo} link: ${shareUrl}`);
-    }
+    toast.success(`Manifest ${manifestNo} updated and re-dispatched to Sales Rep.`);
   };
 
   // Dispatch Daily Manifest with Owner Signature Lock
@@ -498,399 +1168,468 @@ export default function VanStockManagement() {
     setModalDamagedOpen(true);
   };
 
-  const ownerSignature = ownerSignatureData || dailyManifest?.ownerSignatureData || DEFAULT_OWNER_SIGNATURE;
+  // Fetch saved signatures on mount or vehicle/rep change
+  useEffect(() => {
+    fetchSavedSignatures(vehicle?.salesPersonId || vehicle?.id);
+  }, [fetchSavedSignatures, vehicle?.salesPersonId, vehicle?.id]);
+
+  useEffect(() => {
+    if (savedOwnerSignature && (ownerSignatureData === savedOwnerSignature || activeManifest?.ownerSignatureData === savedOwnerSignature)) {
+      setUseSavedOwnerSig(true);
+    }
+  }, [savedOwnerSignature, ownerSignatureData, activeManifest?.ownerSignatureData]);
+
+  useEffect(() => {
+    if (savedRepSignature && activeManifest?.repSignatureData === savedRepSignature) {
+      setUseSavedRepSig(true);
+    }
+  }, [savedRepSignature, activeManifest?.repSignatureData]);
+
+  const handleToggleSavedOwnerSignature = async (checked) => {
+    setUseSavedOwnerSig(checked);
+    if (checked) {
+      if (savedOwnerSignature) {
+        await setOwnerSignatureData(savedOwnerSignature, 'W. Liyanage (Managing Director / Owner)', activeOperatingDate);
+        toast.success(`Applied saved Owner signature for ${activeOperatingDate}.`);
+      } else {
+        toast.info('No saved signature found for Owner. Please draw one to save.');
+        setSigningModalRole('owner');
+      }
+    }
+  };
+
+  const [isSavingEvening, setIsSavingEvening] = useState(false);
+  const handleConfirmEveningReconciliation = async () => {
+    setIsSavingEvening(true);
+    try {
+      const checkedEveningSkus = filteredVanStock
+        .filter((item) => isItemCheckedEvening(item))
+        .map((item) => item.sku || String(item.productId || item.id));
+
+      const res = await saveEveningReconciliation(activeOperatingDate, checkedEveningSkus);
+      if (res?.success) {
+        toast.success(`Evening reconciliation confirmed & saved for ${activeOperatingDate} (${res.count} items verified).`);
+      } else {
+        toast.error('Failed to persist evening reconciliation to database.');
+      }
+    } catch (err) {
+      toast.error('Error saving evening reconciliation.');
+    } finally {
+      setIsSavingEvening(false);
+    }
+  };
+
+  const handleToggleSavedRepSignature = async (checked) => {
+    setUseSavedRepSig(checked);
+    if (checked) {
+      if (savedRepSignature) {
+        const checkedMorningSkus = filteredVanStock
+          .filter((item) => isItemCheckedMorning(item))
+          .map((item) => item.sku || String(item.productId || item.id));
+
+        await submitRepVerificationWithSignature({
+          signatureData: savedRepSignature,
+          repName: dynamicRepName || vehicle?.repName || 'Kamal Perera',
+          dateStr: activeOperatingDate,
+          morningCheckedItems: checkedMorningSkus,
+        });
+        toast.success(`Applied saved Sales Rep signature for ${activeOperatingDate}.`);
+      } else {
+        toast.info('No saved signature found for Sales Rep. Please draw and sign first.');
+        setSigningModalRole('rep');
+      }
+    }
+  };
+
+  const handleSignatureModalSave = async ({ signatureData, signerName }) => {
+    if (signingModalRole === 'owner') {
+      await setOwnerSignatureData(signatureData, signerName, activeOperatingDate);
+      await saveSignatureSetting({ type: 'owner', signatureData });
+      setUseSavedOwnerSig(true);
+      toast.success(`Owner signature saved and applied to manifest for ${activeOperatingDate}.`);
+    } else {
+      const checkedMorningSkus = filteredVanStock
+        .filter((item) => isItemCheckedMorning(item))
+        .map((item) => item.sku || String(item.productId || item.id));
+      const uncheckedCount = filteredVanStock.length - checkedMorningSkus.length;
+
+      await submitRepVerificationWithSignature({
+        signatureData,
+        repName: signerName || dynamicRepName || vehicle?.repName,
+        dateStr: activeOperatingDate,
+        morningCheckedItems: checkedMorningSkus,
+      });
+      await saveSignatureSetting({
+        type: 'rep',
+        repId: vehicle?.salesPersonId || vehicle?.id,
+        signatureData,
+      });
+      setUseSavedRepSig(true);
+      if (uncheckedCount === 0) {
+        toast.success(`Manifest for ${activeOperatingDate} successfully signed and fully verified.`);
+      } else {
+        toast.warning(`Manifest for ${activeOperatingDate} signed with ${uncheckedCount} unchecked item(s) flagged as discrepancy.`);
+      }
+    }
+    setSigningModalRole(null);
+  };
+
+  const morningVerifiedCount = useMemo(
+    () => filteredVanStock.filter((i) => isItemCheckedMorning(i)).length,
+    [filteredVanStock, isItemCheckedMorning]
+  );
+  const eveningReconciledCount = useMemo(
+    () => filteredVanStock.filter((i) => isItemCheckedEvening(i)).length,
+    [filteredVanStock, isItemCheckedEvening]
+  );
+  const allMorningVerified = filteredVanStock.length > 0 && morningVerifiedCount === filteredVanStock.length;
+  const allEveningReconciled = filteredVanStock.length > 0 && eveningReconciledCount === filteredVanStock.length;
+
+  const handleToggleAllMorning = () => {
+    const nextVal = !allMorningVerified;
+    const updated = {};
+    if (nextVal) {
+      filteredVanStock.forEach((item) => {
+        if (item.quantity > 0) {
+          updated[String(item.id)] = true;
+          if (item.productId) updated[String(item.productId)] = true;
+          if (item.sku) updated[String(item.sku)] = true;
+        }
+      });
+    }
+    setLocalMorningChecks(updated);
+    toggleAllRepItemsChecked(nextVal, activeOperatingDate);
+  };
+
+  const handleToggleAllEvening = () => {
+    const nextVal = !allEveningReconciled;
+    const updated = {};
+    if (nextVal) {
+      filteredVanStock.forEach((item) => {
+        if (item.quantity > 0) {
+          updated[String(item.id)] = true;
+          if (item.productId) updated[String(item.productId)] = true;
+          if (item.sku) updated[String(item.sku)] = true;
+        }
+      });
+    }
+    setLocalEveningChecks(updated);
+    toggleAllEveningItemsChecked(nextVal, activeOperatingDate);
+  };
+
+  const ownerSignature = isOwnerSignedForActiveDate
+    ? (activeManifest?.ownerSignatureData || ownerSignatureData || DEFAULT_OWNER_SIGNATURE)
+    : (useSavedOwnerSig ? (savedOwnerSignature || ownerSignatureData || DEFAULT_OWNER_SIGNATURE) : null);
+
+  const dynamicVanKpis = useMemo(() => {
+    if (activeTab === 'damaged') {
+      const totalVal = filteredDamagedGoods.reduce((sum, item) => sum + (Number(item.totalValue) || 0), 0);
+      const totalUnits = filteredDamagedGoods.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+      return {
+        card1Label: 'Quarantine Valuation',
+        card1Value: formatLKR(totalVal),
+        card1Sub: `${filteredDamagedGoods.length} active damaged SKU(s)`,
+        card1Icon: AlertTriangle,
+        card1Color: 'text-rose-500',
+        card2Label: 'Defective Units',
+        card2Value: totalUnits.toLocaleString(),
+        card2Sub: 'Quarantined from field truck',
+        card2Icon: Package,
+        card2Color: 'text-amber-500',
+        card3Label: 'Damaged Records',
+        card3Value: filteredDamagedGoods.length,
+        card3Sub: 'Segregated quarantine pool',
+        card3Icon: SlidersHorizontal,
+        card3Color: 'text-rose-500',
+        card4Label: 'Pending Inspection',
+        card4Value: filteredDamagedGoods.filter((i) => i.status === 'LOGGED').length,
+        card4Sub: 'Awaiting manager sign-off',
+        card4Icon: AlertCircle,
+        card4Color: 'text-amber-500',
+      };
+    }
+
+    if (activeTab === 'movements') {
+      const totalVal = filteredMovements.reduce((sum, m) => sum + ((m.unitPrice || 0) * (m.quantity || 0)), 0);
+      const totalUnits = filteredMovements.reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
+      const roadSaleUnits = filteredMovements
+        .filter((m) => m.movementType === 'VEHICLE_SALES_OUTBOUND')
+        .reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
+      return {
+        card1Label: 'Movements Valuation',
+        card1Value: formatLKR(totalVal),
+        card1Sub: `${filteredMovements.length} audit movement(s)`,
+        card1Icon: ArrowRightLeft,
+        card1Color: 'text-cyan-500',
+        card2Label: 'Total Moved Units',
+        card2Value: totalUnits.toLocaleString(),
+        card2Sub: 'Inventory volume shifted',
+        card2Icon: PackageCheck,
+        card2Color: 'text-blue-500',
+        card3Label: 'Road Sales Outbound',
+        card3Value: `${roadSaleUnits} units`,
+        card3Sub: 'Consolidated field shop sales',
+        card3Icon: Receipt,
+        card3Color: 'text-emerald-500',
+        card4Label: 'Audit Records',
+        card4Value: filteredMovements.length,
+        card4Sub: 'Immutable transaction entries',
+        card4Icon: ShieldCheck,
+        card4Color: 'text-purple-500',
+      };
+    }
+
+    // Default: 'on-hand'
+    const totalVal = filteredVanStock.reduce((sum, item) => {
+      const net = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
+      return sum + calcTotalRealValue(net, item.quantity);
+    }, 0);
+    const totalUnits = filteredVanStock.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const activeSkus = filteredVanStock.filter((i) => i.quantity > 0).length;
+    const pendingCount = filteredVanStock.filter((i) => i.quantity > 0 && !isItemCheckedMorning(i)).length;
+
+    return {
+      card1Label: 'Van On-Hand Value',
+      card1Value: formatLKR(totalVal),
+      card1Sub: `${activeSkus} active SKUs on truck`,
+      card1Icon: Truck,
+      card1Color: 'text-emerald-500',
+      card2Label: 'Loaded Units',
+      card2Value: totalUnits.toLocaleString(),
+      card2Sub: pendingCount > 0 ? `${pendingCount} awaiting rep sign-off` : '100% Rep Confirmed',
+      card2Icon: PackageCheck,
+      card2Color: 'text-accent-500',
+      card3Label: 'Filtered SKUs',
+      card3Value: activeSkus,
+      card3Sub: 'Ready for road distribution',
+      card3Icon: Package,
+      card3Color: 'text-indigo-500',
+      card4Label: 'Damaged Quarantine',
+      card4Value: formatLKR(kpis.damaged.totalValue),
+      card4Sub: `${kpis.damaged.totalUnits} defect units isolated`,
+      card4Icon: AlertTriangle,
+      card4Color: 'text-rose-500',
+    };
+  }, [activeTab, filteredVanStock, filteredDamagedGoods, filteredMovements, kpis.damaged, isItemCheckedMorning]);
+
+  const Card1Icon = dynamicVanKpis.card1Icon;
+  const Card2Icon = dynamicVanKpis.card2Icon;
+  const Card3Icon = dynamicVanKpis.card3Icon;
+  const Card4Icon = dynamicVanKpis.card4Icon;
 
   return (
     <VanStockLayout>
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          1. FLEET & DISPATCH STATUS BANNER (Light & Dark Adaptive Hero)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="pt-2 sm:pt-4 relative overflow-hidden rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 text-slate-900 dark:text-white p-5 sm:p-7 shadow-sm transition-colors">
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          {/* Truck & Rep Identity */}
-          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4">
-            <div className="w-16 h-16 sm:w-16 sm:h-16 rounded-2xl bg-orange-50 text-orange-600 border border-orange-200 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800/50 flex items-center justify-center shadow-inner flex-shrink-0 overflow-hidden">
-              {vehicle?.vehicleImage ? (
-                <img
-                  src={resolveServerImageUrl(vehicle.vehicleImage)}
-                  alt={vehicle.plateNumber || vehicle.id}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Truck size={32} />
-              )}
-            </div>
-
-            <div>
-              <div className="flex items-center justify-center sm:justify-start gap-2.5 flex-wrap">
-                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
-                  {vehicle?.id || 'VAN-01'}
-                </span>
-                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  {vehicle?.status || 'ACTIVE'}
-                </span>
-                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700">
-                  Rev #{dailyManifest?.manifestRevision || 1}
-                </span>
-                {dailyManifest?.status === 'PARTIAL_DISCREPANCY' && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800 flex items-center gap-1">
-                    <AlertTriangle size={11} /> Rep Discrepancy Flagged
-                  </span>
-                )}
-                {dailyManifest?.status === 'DISPATCHED' && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 flex items-center gap-1">
-                    <Lock size={11} /> Owner Signed & Dispatched
-                  </span>
-                )}
-                {(dailyManifest?.status === 'VERIFIED' || dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED') && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-                    <CheckCircle2 size={11} /> Rep Tablet Accepted
-                  </span>
-                )}
-              </div>
-
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight mt-1 text-slate-900 dark:text-white">
-                {vehicle?.plateNumber || vehicle?.vehicleNumber || 'WP KDK-4521'}
-              </h1>
-
-              <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1 flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 flex-wrap">
-                <span>
-                  Route: <strong className="text-slate-800 dark:text-zinc-200">All Routes</strong>
-                </span>
-                <span className="hidden sm:inline">•</span>
-                <span>Rep: <strong className="text-slate-800 dark:text-zinc-200">{dynamicRepName || 'Unassigned'}</strong> ({dynamicRepPhone || 'No phone registered'})</span>
-                <span className="hidden sm:inline">•</span>
-                <span>Driver: <strong className="text-slate-800 dark:text-zinc-200">{vehicle?.driver || vehicle?.driverName || 'Sunil Shantha'}</strong></span>
-              </p>
-            </div>
+      {/* -------------------------------------------------------------
+          1. MINIMALIST VEHICLE HEADER
+         ------------------------------------------------------------- */}
+      <div className="rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-white p-4 sm:p-5 shadow-sm transition-colors flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-5 sm:gap-8 flex-wrap">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+              Rep Name
+            </span>
+            <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+              {dynamicRepName || 'Unassigned'}
+            </p>
           </div>
-
-          {/* Quick Header Navigation Actions with shortened mobile labels */}
-          <div className="flex items-center justify-center sm:justify-start lg:justify-end gap-2 flex-wrap pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-200 dark:border-zinc-800 w-full lg:w-auto">
-            {/* Owner Pre-Sign & Finalize Manifest Dispatch */}
-            <button
-              type="button"
-              onClick={handleDispatchDailyManifest}
-              className="flex items-center gap-1.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs shadow-sm transition-all cursor-pointer whitespace-nowrap"
-              title="Lock Owner Signature & Dispatch Daily Manifest to Sales Rep"
-            >
-              <PenTool size={14} />
-              <span className="hidden sm:inline">Dispatch Manifest</span>
-              <span className="sm:hidden">Dispatch</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate('/van-stock/transfer')}
-              className="flex items-center gap-1.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-accent-600 hover:bg-accent-700 active:scale-95 text-white font-bold text-xs shadow-sm transition-all cursor-pointer whitespace-nowrap"
-            >
-              <ArrowRightLeft size={14} />
-              <span className="hidden sm:inline">Transfer Workbench</span>
-              <span className="sm:hidden">Transfer</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate(`/van-stock/confirm/${vehicle.id}`)}
-              className="flex items-center gap-1.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700 active:scale-95 font-semibold text-xs transition-all cursor-pointer whitespace-nowrap"
-            >
-              <ShieldCheck size={14} />
-              <span className="hidden sm:inline">Rep Acceptance Portal</span>
-              <span className="sm:hidden">Rep Portal</span>
-              {pendingConfirmationCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-900 font-bold text-[10px]">
-                  {pendingConfirmationCount}
-                </span>
-              )}
-            </button>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleWhatsApp}
-                className="p-2 sm:p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 transition-all cursor-pointer shadow-sm"
-                title={dynamicRepPhone ? `WhatsApp Direct Share to ${dynamicRepName} (${dynamicRepPhone})` : 'No Rep Phone Registered'}
-              >
-                {copiedLink ? <Check size={15} className="text-emerald-600 dark:text-emerald-400" /> : <MessageCircle size={15} className="text-emerald-600 dark:text-emerald-400 fill-emerald-100 dark:fill-emerald-950/50" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalPrintOpen(true)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
-                title="Print Daily Load Manifest (A4)"
-              >
-                <Printer size={15} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalOwnerSignOpen(true)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
-                title="Owner / Dispatcher Signature Settings"
-              >
-                <Lock size={15} />
-              </button>
-            </div>
+          <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 hidden sm:block" />
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+              Rep Phone
+            </span>
+            <p className="text-xs sm:text-sm font-mono font-semibold text-slate-700 dark:text-slate-300">
+              {dynamicRepPhone || 'No phone registered'}
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* Discrepancy Top Alert Banner with Re-Dispatch Action */}
-      {hasDiscrepancy && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 border border-amber-300 dark:border-amber-700/70 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 flex items-center justify-center text-amber-700 dark:text-amber-400 flex-shrink-0">
-              <AlertTriangle size={18} />
-            </div>
-            <div>
-              <h4 className="font-bold text-amber-950 dark:text-amber-200">
-                Discrepancy Action Needed: {uncheckedByRepItems.length} SKU{uncheckedByRepItems.length === 1 ? '' : 's'} Unchecked by Sales Rep
-              </h4>
-              <p className="text-amber-800 dark:text-amber-300 text-[11px] mt-0.5">
-                Physical truck count mismatch detected on {vehicle.id} (Manifest Rev #{dailyManifest?.manifestRevision || 1}). Reconcile quantities below and re-dispatch updated manifest to rep.
-              </p>
-            </div>
-          </div>
-
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleReDispatch}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs shadow-sm transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
+            onClick={() => setModalPrintOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+            title="Print Daily Load Manifest (A4)"
           >
-            <Share2 size={13} />
-            <span>Re-Dispatch Updated Manifest / Copy Rep Link</span>
+            <Printer size={15} />
+            <span>Print</span>
           </button>
         </div>
-      )}
+      </div>
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          2. FIELD OPERATION KPI CARDS (Van On-Hand, Par Shortage, Damages)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* -------------------------------------------------------------
+          2. DYNAMIC FIELD OPERATION KPI CARDS (Van On-Hand, Par Shortage, Damages)
+         ------------------------------------------------------------- */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* KPI 1: Active Van Stock Valuation */}
+        {/* KPI 1 */}
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Van On-Hand Value</span>
-            <Truck size={15} className="text-emerald-500" />
+            <span className="font-semibold uppercase tracking-wider text-[10px]">{dynamicVanKpis.card1Label}</span>
+            <Card1Icon size={15} className={dynamicVanKpis.card1Color} />
           </div>
           <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono truncate">
-            {formatLKR(kpis.van.totalValue)}
+            {dynamicVanKpis.card1Value}
           </div>
-          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block">
-            {kpis.van.skuCount} active SKUs on truck
+          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block truncate">
+            {dynamicVanKpis.card1Sub}
           </span>
         </div>
 
-        {/* KPI 2: Total Loaded Units */}
+        {/* KPI 2 */}
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Loaded Units</span>
-            <PackageCheck size={15} className="text-accent-600 dark:text-accent-400" />
+            <span className="font-semibold uppercase tracking-wider text-[10px]">{dynamicVanKpis.card2Label}</span>
+            <Card2Icon size={15} className={dynamicVanKpis.card2Color} />
           </div>
           <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono">
-            {kpis.van.totalUnits.toLocaleString()}
+            {dynamicVanKpis.card2Value}
           </div>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
-            {pendingConfirmationCount > 0 ? (
-              <span className="text-amber-600 dark:text-amber-400 font-medium">
-                {pendingConfirmationCount} awaiting rep sign-off
-              </span>
-            ) : (
-              '100% Rep Confirmed'
-            )}
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate">
+            {dynamicVanKpis.card2Sub}
           </span>
         </div>
 
-        {/* KPI 3: Next-Trip Replenishment Par Need */}
+        {/* KPI 3 */}
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Replenishment Need</span>
-            <Sparkles size={15} className="text-amber-500" />
+            <span className="font-semibold uppercase tracking-wider text-[10px]">{dynamicVanKpis.card3Label}</span>
+            <Card3Icon size={15} className={dynamicVanKpis.card3Color} />
           </div>
           <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono truncate">
-            {formatLKR(kpis.replenishment.estimatedCost)}
+            {dynamicVanKpis.card3Value}
           </div>
-          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium block">
-            {kpis.replenishment.criticalItemCount} critical short item{kpis.replenishment.criticalItemCount === 1 ? '' : 's'}
+          <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium block truncate">
+            {dynamicVanKpis.card3Sub}
           </span>
         </div>
 
-        {/* KPI 4: Quarantined Damaged Goods */}
+        {/* KPI 4 */}
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Damaged Quarantine</span>
-            <AlertTriangle size={15} className="text-rose-500" />
+            <span className="font-semibold uppercase tracking-wider text-[10px]">{dynamicVanKpis.card4Label}</span>
+            <Card4Icon size={15} className={dynamicVanKpis.card4Color} />
           </div>
           <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono truncate">
-            {formatLKR(kpis.damaged.totalValue)}
+            {dynamicVanKpis.card4Value}
           </div>
-          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-medium block">
-            {kpis.damaged.totalUnits} active unit{kpis.damaged.totalUnits === 1 ? '' : 's'} ({activeDamagedGoodsList.length} active SKU{activeDamagedGoodsList.length === 1 ? '' : 's'})
+          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-medium block truncate">
+            {dynamicVanKpis.card4Sub}
           </span>
         </div>
       </div>
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      {/* -------------------------------------------------------------
           3. FIELD OPERATIONS QUICK-ACTION BAR
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+         ------------------------------------------------------------- */}
+      {/* 3. COMPACT MODERN OPERATIONS TOOLBAR & TABS */}
+      <div className="p-2 sm:p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+        {/* Navigation Tabs (Pill Style) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+          {[
+            { id: 'on-hand', label: 'Van Stock', icon: Truck, count: filteredVanStock.length },
+            { id: 'damaged', label: 'Damaged Goods', icon: AlertTriangle, count: activeDamagedGoodsList.length },
+            { id: 'movements', label: 'Audit History', icon: ArrowRightLeft, count: stockMovements.length },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setSearchQuery('');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-accent-600 text-white shadow-sm ring-1 ring-accent-500/50'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <Icon size={14} />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Compact Field Operations Action Buttons */}
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             onClick={() => {
               setTargetProductId(null);
               setModalLoadOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-accent-600 hover:bg-accent-700 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-accent-600 hover:bg-accent-700 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
           >
-            <Plus size={14} />
-            <span className="hidden sm:inline">Load Van Stock</span>
-            <span className="sm:hidden">+ Load</span>
+            <ListPlus size={14} />
+            <span>Load Van Stock</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenSalesModal(null)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
           >
-            <Receipt size={14} />
-            <span className="hidden sm:inline">Record Road Sale</span>
-            <span className="sm:hidden">Sale</span>
+            <Receipt size={13} />
+            <span>Record Road Sale</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenDamagedModal(null)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 transition-all cursor-pointer shadow-sm whitespace-nowrap"
           >
-            <AlertTriangle size={14} />
-            <span className="hidden sm:inline">Quarantine Defect</span>
-            <span className="sm:hidden">Quarantine</span>
+            <AlertTriangle size={13} />
+            <span>Damage</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenReturnModal(null)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
           >
-            <RotateCcw size={14} />
-            <span className="hidden sm:inline">Return to Warehouse</span>
-            <span className="sm:hidden">Return</span>
+            <RotateCcw size={13} />
+            <span>Return to Store</span>
           </button>
-        </div>
 
-        {/* Right Action Group: Central Warehouse navigation and contextual Damaged Report print trigger */}
-        <div className="flex items-center gap-2 flex-wrap">
           {activeTab === 'damaged' && (
             <button
               type="button"
               onClick={() => setModalDamageReportOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
               title="Print Damaged Goods Audit Report (A4)"
             >
-              <Printer size={14} />
-              <span className="hidden sm:inline">Print Damage Report (A4)</span>
-              <span className="sm:hidden">Damage Report</span>
+              <Printer size={13} />
+              <span>Print Damage</span>
             </button>
           )}
 
           <button
             type="button"
             onClick={() => navigate('/warehouse')}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50 transition-all cursor-pointer whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50 transition-all cursor-pointer whitespace-nowrap"
           >
-            <Warehouse size={14} />
-            <span className="hidden sm:inline">Go to Central Warehouse â†’</span>
-            <span className="sm:hidden">Warehouse â†’</span>
+            <Warehouse size={13} />
+            <span>Warehouse &rarr;</span>
           </button>
         </div>
       </div>
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          4. 4-PILLAR FIELD OPERATIONS NAVIGATION (Responsive: Mobile Dropdown / Desktop Tabs)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="border-b border-gray-200 dark:border-slate-700">
-        {(() => {
-          const navigationTabs = [
-            { id: 'on-hand', label: 'On-Hand Van Stock', icon: Truck, count: filteredVanStock.length },
-            { id: 'restock', label: 'Next-Trip Restock', icon: Sparkles, count: kpis.replenishment.criticalItemCount },
-            { id: 'damaged', label: 'Damaged Goods Ledger', icon: AlertTriangle, count: activeDamagedGoodsList.length },
-            { id: 'movements', label: 'Movement Audit Trail', icon: ArrowRightLeft, count: stockMovements.length },
-          ];
-
-          return (
-            <>
-              {/* Mobile View Section Selector: 100% width SearchableSelect replacing horizontal scroll */}
-              <div className="flex sm:hidden flex-col gap-1 pb-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Active Operations Section
-                </label>
-                <SearchableSelect
-                  options={navigationTabs.map((tab) => ({
-                    value: tab.id,
-                    label: `${tab.label} (${tab.count ?? 0})`,
-                    icon: tab.icon,
-                  }))}
-                  value={activeTab}
-                  onChange={(val) => {
-                    if (val) {
-                      setActiveTab(val);
-                      setSearchQuery('');
-                    }
-                  }}
-                  placeholder="Select Operations Section..."
-                  clearable={false}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Desktop View: Horizontal tab buttons */}
-              <nav className="hidden sm:flex items-center gap-2 overflow-x-auto pb-1">
-                {navigationTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setSearchQuery('');
-                      }}
-                      className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
-                        isActive
-                          ? 'border-accent-600 text-accent-700 dark:text-accent-400 bg-accent-50/40 dark:bg-accent-950/20'
-                          : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      <Icon size={16} />
-                      <span>{tab.label}</span>
-                      {tab.count !== undefined && (
-                        <span
-                          className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                            isActive
-                              ? 'bg-accent-200 dark:bg-accent-900 text-accent-900 dark:text-accent-200'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          {tab.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </nav>
-            </>
-          );
-        })()}
-      </div>
-
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      {/* -------------------------------------------------------------
           5. CONTEXTUAL FILTER ENGINE (Universal SearchableSelect & DateBar)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+         ------------------------------------------------------------- */}
       <div className="space-y-3">
         <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search Box */}
@@ -907,8 +1646,8 @@ export default function VanStockManagement() {
 
           {/* Contextual SearchableSelect Dropdowns */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Category Filter for catalog tabs */}
-            {(activeTab === 'on-hand' || activeTab === 'restock') && (
+            {/* Category Filter for On-Hand */}
+            {activeTab === 'on-hand' && (
               <div className="w-48 sm:w-56">
                 <SearchableSelect
                   value={categoryFilter}
@@ -930,20 +1669,6 @@ export default function VanStockManagement() {
                   onChange={setVanApprovalFilter}
                   options={vanApprovalOptions}
                   placeholder="Verification Status"
-                  size="sm"
-                  portal
-                />
-              </div>
-            )}
-
-            {/* Priority Tier Filter on Restock */}
-            {activeTab === 'restock' && (
-              <div className="w-48 sm:w-52">
-                <SearchableSelect
-                  value={priorityTierFilter}
-                  onChange={setPriorityTierFilter}
-                  options={priorityTierOptions}
-                  placeholder="Priority Tier"
                   size="sm"
                   portal
                 />
@@ -980,46 +1705,207 @@ export default function VanStockManagement() {
           </div>
         </div>
 
-        {/* Unified Date Preset Filter Bar (Tabs: damaged, movements strictly - Decoupled from On-Hand Perpetual Inventory) */}
-        {(activeTab === 'damaged' || activeTab === 'movements') && (
-          <DateFilterBar
-            selectedPreset={datePreset}
-            onPresetChange={setDatePreset}
-            customStart={customStart}
-            onCustomStartChange={setCustomStart}
-            customEnd={customEnd}
-            onCustomEndChange={setCustomEnd}
-            resultCount={
-              activeTab === 'damaged'
-                ? filteredDamagedGoods.length
-                : filteredMovements.length
-            }
-            label={
-              activeTab === 'damaged'
-                ? 'Quarantine Date Filter'
-                : 'Movement Timestamp Filter'
-            }
+        {/* Unified Day of Week Pills & Shadcn Calendar Date Filter Bar */}
+        {(activeTab === 'on-hand' || activeTab === 'damaged') && (
+          <UnifiedDayPillsCalendarFilter
+            selectedDayOfWeek={selectedDayOfWeek}
+            onSelectDayOfWeek={handleSelectDayOfWeek}
+            calendarDateRange={calendarDateRange}
+            onSelectDateRange={(range) => {
+              setCalendarDateRange(range);
+              setSelectedDayOfWeek('ALL');
+            }}
+            onReset={handleResetAuditDateFilters}
+            label={activeTab === 'on-hand' ? `Operating Date (${activeOperatingDate})` : 'Quarantine Date'}
+            resultCount={activeTab === 'on-hand' ? filteredVanStock.length : filteredDamagedGoods.length}
           />
         )}
       </div>
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          TAB 1: ON-HAND VAN STOCK (With Inline/Modal Quantity Edit)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* -------------------------------------------------------------
+          TAB 1: VAN STOCK (Unified Morning & Evening Reconcile Portal)
+         ------------------------------------------------------------- */}
       {activeTab === 'on-hand' && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-              Active Van Loaded Stock ({filteredVanStock.length})
-            </h2>
-            <div className="flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          {/* Sub-Header with Status Counts and Batch Toggle Actions */}
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Active Van Loaded Stock ({filteredVanStock.length})
+              </h2>
+              <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                <Sun size={12} className="text-emerald-600" />
+                <span>Morning: {morningVerifiedCount}/{filteredVanStock.length}</span>
+              </span>
+              <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1">
+                <Moon size={12} className="text-blue-600" />
+                <span>Evening: {eveningReconciledCount}/{filteredVanStock.length}</span>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={() => navigate(`/van-stock/confirm/${vehicle.id}`)}
-                className="text-xs font-semibold text-accent-600 dark:text-accent-400 hover:underline"
+                onClick={handleToggleAllMorning}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 transition-all cursor-pointer"
               >
-                Open Acceptance Drawer
+                <CheckSquare size={13} className={allMorningVerified ? 'text-emerald-600' : 'text-slate-400'} />
+                <span>{allMorningVerified ? 'Uncheck Morning' : 'Morning: Check All'}</span>
               </button>
+              <button
+                type="button"
+                onClick={handleToggleAllEvening}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100/60 transition-all cursor-pointer"
+              >
+                <CheckSquare size={13} className={allEveningReconciled ? 'text-blue-600' : 'text-slate-400'} />
+                <span>{allEveningReconciled ? 'Uncheck Evening' : 'Evening: Reconcile All'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEveningReconciliation}
+                disabled={isSavingEvening}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                title="Persist Evening Checklist to Database for active date"
+              >
+                <ShieldCheck size={13} className="text-indigo-600 dark:text-indigo-400" />
+                <span>{isSavingEvening ? 'Saving...' : 'Confirm'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Embedded Dual In-App Digital Signature Cards (Owner & Sales Rep) */}
+          <div className="p-4 sm:p-5 border-b border-gray-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/40 dark:bg-slate-900/30">
+            {/* Card 1: Warehouse Keeper / Owner In-App Digital Signature */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Lock size={15} className="text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Dispatcher / Owner Signature
+                  </span>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  isOwnerSignedForActiveDate
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800'
+                }`}>
+                  {isOwnerSignedForActiveDate ? 'Verified & Stamped' : 'Ready to Sign'}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {activeManifest?.ownerSignedBy || dailyManifest?.ownerSignedBy || 'W. Liyanage (Managing Director / Owner)'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                    Stamped: {isOwnerSignedForActiveDate && activeManifest?.ownerSignedAt ? new Date(activeManifest.ownerSignedAt).toLocaleString() : 'Ready'}
+                  </p>
+                </div>
+                {ownerSignature && (
+                  <img
+                    src={ownerSignature}
+                    alt="Owner Signature"
+                    className="h-10 max-w-[120px] object-contain filter dark:invert-0 border border-dashed border-gray-200 dark:border-slate-700 rounded-lg p-1 bg-white dark:bg-slate-800"
+                  />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-slate-800/60 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 dark:text-slate-300 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={useSavedOwnerSig}
+                    onChange={(e) => handleToggleSavedOwnerSignature(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                  />
+                  <span>Use Saved Signature</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSigningModalRole('owner')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100/70 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <PenTool size={13} />
+                  <span>{ownerSignature ? 'Draw / Update' : 'Sign as Owner'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Card 2: Sales Representative Acceptance Signature */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserCheck size={15} className="text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Sales Representative Acceptance
+                  </span>
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    activeManifest?.status === 'PARTIAL_DISCREPANCY' && isRepSignedForActiveDate
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/50 dark:text-amber-300'
+                      : isRepSignedForActiveDate
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800'
+                  }`}
+                >
+                  {activeManifest?.status === 'PARTIAL_DISCREPANCY' && isRepSignedForActiveDate
+                    ? 'Signed with Discrepancy'
+                    : isRepSignedForActiveDate
+                    ? 'Signed & Fully Verified'
+                    : 'Pending Sign-Off'}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {activeManifest?.repSignedBy || dailyManifest?.repSignedBy || dynamicRepName || vehicle?.repName || 'Kamal Perera'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                    {isRepSignedForActiveDate && activeManifest?.repSignedAt
+                      ? `Signed: ${new Date(activeManifest.repSignedAt).toLocaleString()}`
+                      : 'Awaiting signature'}
+                  </p>
+                </div>
+
+                {isRepSignedForActiveDate && activeManifest?.repSignatureData ? (
+                  <img
+                    src={activeManifest.repSignatureData}
+                    alt="Rep Signature"
+                    className="h-10 max-w-[120px] object-contain filter dark:invert-0 border border-dashed border-gray-200 dark:border-slate-700 rounded-lg p-1 bg-white dark:bg-slate-800"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSigningModalRole('rep')}
+                    className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all cursor-pointer"
+                  >
+                    Sign Now
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-slate-800/60 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 dark:text-slate-300 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={useSavedRepSig}
+                    onChange={(e) => handleToggleSavedRepSignature(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                  />
+                  <span>Use Saved Signature</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSigningModalRole('rep')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100/70 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <PenTool size={13} />
+                  <span>{isRepSignedForActiveDate && activeManifest?.repSignatureData ? 'Draw / Update' : 'Draw & Sign'}</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1031,11 +1917,19 @@ export default function VanStockManagement() {
             </div>
           ) : (
             <>
-              {/* Desktop View */}
+              {/* Desktop Table View */}
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="border-b border-gray-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-300 tracking-wider">
+                      <th className="py-3 px-3 text-center w-16" title="Morning Load Verification Check">
+                        <Sun size={12} className="inline text-emerald-600 mr-0.5" />
+                        <span>Morning</span>
+                      </th>
+                      <th className="py-3 px-3 text-center w-16" title="Evening Return & Sales Reconciliation Check">
+                        <Moon size={12} className="inline text-blue-600 mr-0.5" />
+                        <span>Evening</span>
+                      </th>
                       <th className="py-3 px-4">SKU / Item</th>
                       <th className="py-3 px-4">Category</th>
                       <th className="py-3 px-3 text-center">Unit</th>
@@ -1052,12 +1946,49 @@ export default function VanStockManagement() {
                       const product = products.find((p) => p.id === item.productId);
                       const netPrice = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
                       const totalVal = calcTotalRealValue(netPrice, item.quantity);
-                      const isApproved =
-                        item.status === 'APPROVED' ||
-                        ((dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED') && item.quantity > 0);
+                      const isMorningChecked = isItemCheckedMorning(item);
+                      const isEveningChecked = isItemCheckedEvening(item);
+                      const isDiscrepancy = item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !isMorningChecked);
+
+                      // Distinct row background highlights:
+                      // Morning check: bg-emerald-500/15 border-emerald-500/40 text-emerald-950 dark:text-emerald-100 font-medium
+                      // Evening reconciliation: bg-blue-500/15 border-blue-500/40 text-blue-950 dark:text-blue-100 font-medium
+                      // Both checked: dual gradient
+                      let rowStyle = 'hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors';
+                      if (isEveningChecked && isMorningChecked) {
+                        rowStyle = 'bg-gradient-to-r from-emerald-500/15 via-blue-500/15 to-emerald-500/10 border-blue-500/40 text-slate-900 dark:text-white font-medium';
+                      } else if (isEveningChecked) {
+                        rowStyle = 'bg-blue-500/15 border-blue-500/40 text-blue-950 dark:text-blue-100 font-medium';
+                      } else if (isMorningChecked) {
+                        rowStyle = 'bg-emerald-500/15 border-emerald-500/40 text-emerald-950 dark:text-emerald-100 font-medium';
+                      } else if (isDiscrepancy) {
+                        rowStyle = 'bg-rose-500/15 border-rose-500/40';
+                      }
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
+                        <tr key={item.id} className={rowStyle}>
+                          {/* Morning Checkbox */}
+                          <td className="py-3 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isMorningChecked}
+                              onChange={() => handleToggleCheck(item)}
+                              className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                              title="Morning Load Check"
+                            />
+                          </td>
+
+                          {/* Evening Reconciliation Checkbox */}
+                          <td className="py-3 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isEveningChecked}
+                              onChange={() => handleToggleEveningReconciled(item)}
+                              className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                              title="Evening Return / Sales Reconciled Check"
+                            />
+                          </td>
+
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
@@ -1086,15 +2017,20 @@ export default function VanStockManagement() {
                           </td>
 
                           <td className="py-3 px-3 text-center">
-                            {item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !item.repChecked) ? (
+                            {isEveningChecked && isMorningChecked ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/50 dark:text-blue-300">
+                                <CheckCircle2 size={10} />
+                                <span>Reconciled</span>
+                              </span>
+                            ) : item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !isMorningChecked) ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800">
                                 <AlertTriangle size={10} />
-                                <span>Unchecked by Rep â€” Action Needed</span>
+                                <span>Action Needed</span>
                               </span>
-                            ) : item.repChecked || isApproved ? (
+                            ) : isMorningChecked ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
                                 <CheckCircle2 size={10} />
-                                <span>Verified by Rep</span>
+                                <span>Verified</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
@@ -1165,18 +2101,29 @@ export default function VanStockManagement() {
                 </table>
               </div>
 
-              {/* Mobile Cards */}
+              {/* Mobile Cards View */}
               <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-700/60">
                 {filteredVanStock.map((item) => {
                   const product = products.find((p) => p.id === item.productId);
                   const netPrice = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
                   const totalVal = calcTotalRealValue(netPrice, item.quantity);
-                  const isApproved =
-                    item.status === 'APPROVED' ||
-                    ((dailyManifest?.status === 'FULLY_VERIFIED' || dailyManifest?.status === 'REP_ACCEPTED' || dailyManifest?.status === 'VERIFIED') && item.quantity > 0);
+                  const isMorningChecked = isItemCheckedMorning(item);
+                  const isEveningChecked = isItemCheckedEvening(item);
+                  const isDiscrepancy = item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !isMorningChecked);
+
+                  let rowStyle = 'p-4 space-y-2.5 transition-colors';
+                  if (isEveningChecked && isMorningChecked) {
+                    rowStyle = 'p-4 space-y-2.5 bg-gradient-to-r from-emerald-500/15 to-blue-500/15 border-l-4 border-l-blue-500';
+                  } else if (isEveningChecked) {
+                    rowStyle = 'p-4 space-y-2.5 bg-blue-500/15 border-l-4 border-l-blue-500';
+                  } else if (isMorningChecked) {
+                    rowStyle = 'p-4 space-y-2.5 bg-emerald-500/15 border-l-4 border-l-emerald-500';
+                  } else if (isDiscrepancy) {
+                    rowStyle = 'p-4 space-y-2.5 bg-rose-500/15 border-l-4 border-l-rose-500';
+                  }
 
                   return (
-                    <div key={item.id} className="p-4 space-y-2.5">
+                    <div key={item.id} className={rowStyle}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
@@ -1187,22 +2134,28 @@ export default function VanStockManagement() {
                           </h3>
                         </div>
 
-                        {item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !item.repChecked) ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800 flex-shrink-0">
-                            <AlertTriangle size={10} />
-                            <span>Action Needed</span>
-                          </span>
-                        ) : item.repChecked || isApproved ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 flex-shrink-0">
-                            <CheckCircle2 size={10} />
-                            <span>Verified</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 flex-shrink-0">
-                            <Clock size={10} />
-                            <span>Pending</span>
-                          </span>
-                        )}
+                        {/* Dual Checkboxes for Mobile */}
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <label className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={isMorningChecked}
+                              onChange={() => handleToggleCheck(item)}
+                              className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                            />
+                            <Sun size={11} className="text-emerald-600" />
+                          </label>
+
+                          <label className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={isEveningChecked}
+                              onChange={() => handleToggleEveningReconciled(item)}
+                              className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                            />
+                            <Moon size={11} className="text-blue-600" />
+                          </label>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-gray-100 dark:border-slate-700/60">
@@ -1277,65 +2230,11 @@ export default function VanStockManagement() {
         </div>
       )}
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          TAB 2: NEXT-TRIP RESTOCK REQUIREMENTS (Automated Par Planner)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {activeTab === 'restock' && (
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                Next-Trip Restock Requirements ({filteredRestockItems.length})
-              </h2>
-            </div>
 
-            <div className="divide-y divide-gray-100 dark:divide-slate-700/60">
-              {filteredRestockItems.map((item) => (
-                <div key={item.productId} className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
-                        {item.sku}
-                      </span>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        {item.name}
-                      </h3>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.priority.badgeClass}`}>
-                        {item.priority.level}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-500 dark:text-slate-300 flex-wrap">
-                      <span>On-Hand: <strong className="text-slate-900 dark:text-white">{item.currentOnHand} {item.unit}</strong></span>
-                      <span>Target Par: <strong>{item.targetCapacity}</strong></span>
-                      <span>Deficit: <strong className="text-rose-600 dark:text-rose-400">+{item.restockNeeded} {item.unit}</strong></span>
-                      <span>Warehouse Avail: <strong className="text-blue-600 dark:text-blue-400">{item.availableWarehouse} {item.unit}</strong></span>
-                      <span>Restock Cost: <strong className="text-accent-600 dark:text-accent-400 font-mono">{formatLKR(item.estimatedCost)}</strong></span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTargetProductId(item.productId);
-                        setModalLoadOpen(true);
-                      }}
-                      className="px-3 py-1.5 text-xs font-bold rounded-xl bg-accent-600 hover:bg-accent-700 text-white shadow-sm transition-all cursor-pointer"
-                    >
-                      Restock into Van
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      {/* -------------------------------------------------------------
           TAB 3: DAMAGED GOODS LEDGER (Quarantine Pool & Defect Resolution)
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+         ------------------------------------------------------------- */}
       {activeTab === 'damaged' && (
         <div className="space-y-4">
           {/* Sub-Header: Active vs Resolved History Mode & Date Correlation */}
@@ -1530,103 +2429,187 @@ export default function VanStockManagement() {
         </div>
       )}
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          TAB 4: TRANSACTIONAL AUDIT MOVEMENT LEDGER
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* 4. TRANSACTIONAL AUDIT MOVEMENT LEDGER (AUDIT HISTORY) */}
       {activeTab === 'movements' && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm">
-          {filteredMovements.length === 0 ? (
-            <div className="py-14 text-center text-slate-400 text-xs">
-              <ArrowRightLeft className="w-12 h-12 mx-auto mb-2 opacity-30" />
-              <p className="font-semibold text-slate-600 dark:text-slate-300">No stock movements found.</p>
-            </div>
-          ) : (
-            <>
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-gray-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-300 tracking-wider">
-                      <th className="py-3 px-4">Timestamp</th>
-                      <th className="py-3 px-4">Movement Type</th>
-                      <th className="py-3 px-4">Item / SKU</th>
-                      <th className="py-3 px-3 text-center">Qty</th>
-                      <th className="py-3 px-4">Source â†’ Target</th>
-                      <th className="py-3 px-4">Reference</th>
-                      <th className="py-3 px-4">Performed By</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
-                    {filteredMovements.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
-                        <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                          {formatMovementTimestamp(m.timestamp || m.createdAt)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                            {m.movementType}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-bold text-slate-900 dark:text-white block">{m.productName}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{m.sku}</span>
-                        </td>
-                        <td className="py-3 px-3 text-center font-bold font-mono text-slate-900 dark:text-white">
-                          {m.quantity}
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
-                          {m.sourceLocation} â†’ {m.targetLocation}
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-accent-700 dark:text-accent-400 font-bold">
-                          {m.reference || 'N/A'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                          {m.performedBy}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        <div className="space-y-3">
+          {/* Day of Week & Calendar Date Filter Bar */}
+          <UnifiedDayPillsCalendarFilter
+            selectedDayOfWeek={selectedDayOfWeek}
+            onSelectDayOfWeek={handleSelectDayOfWeek}
+            calendarDateRange={calendarDateRange}
+            onSelectDateRange={(range) => {
+              setCalendarDateRange(range);
+              setSelectedDayOfWeek('ALL');
+            }}
+            onReset={handleResetAuditDateFilters}
+            label="Audit Date Filter"
+            resultCount={filteredMovements.length}
+          />
+
+          {/* Item-Wise Total Summary Bar */}
+          {movementItemTotals.length > 0 && (
+            <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <PackageCheck size={14} className="text-accent-600" />
+                  Item-Wise Movement Totals ({movementItemTotals.length} Products Moved)
+                </span>
+                <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-400">
+                  {movementItemTotals.reduce((sum, item) => sum + item.totalUnits, 0)} Total Units / {filteredMovements.length} Transactions
+                </span>
               </div>
 
-              {/* Mobile Cards View */}
-              <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-700/60">
-                {filteredMovements.map((m) => (
-                  <div key={m.id} className="p-3.5 space-y-2 text-xs">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                        {m.movementType}
-                      </span>
-                      <span className="font-mono text-[10px] text-slate-400">
-                        {formatMovementTimestamp(m.timestamp || m.createdAt)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
+              {/* Product Pills / Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 pt-1 max-h-48 overflow-y-auto">
+                {movementItemTotals.map((item) => (
+                  <div
+                    key={item.productId || item.sku}
+                    className="p-2 rounded-xl border border-gray-100 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-900/50 flex flex-col justify-between text-xs space-y-1"
+                  >
+                    <div className="flex items-start justify-between gap-1">
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-900 dark:text-white truncate">{m.productName}</p>
-                        <p className="font-mono text-[10px] text-slate-400">{m.sku}</p>
+                        <span className="font-mono text-[9px] font-bold text-slate-400">{item.sku}</span>
+                        <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{item.productName}</p>
                       </div>
-                      <span className="font-mono font-bold text-sm text-slate-900 dark:text-white flex-shrink-0">
-                        {m.quantity} units
+                      <span className="font-mono font-black text-xs text-accent-700 dark:text-accent-300 flex-shrink-0">
+                        {item.totalUnits} units
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-gray-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 font-mono">
-                      <span>{m.sourceLocation} â†’ {m.targetLocation}</span>
-                      <span className="text-accent-600 dark:text-accent-400 font-semibold">{m.reference || 'N/A'}</span>
+                    <div className="flex items-center gap-1 flex-wrap text-[10px]">
+                      {item.vanSales > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-medium">
+                          Sale: {item.vanSales}
+                        </span>
+                      )}
+                      {item.loaded > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-accent-100 text-accent-800 dark:bg-accent-950/60 dark:text-accent-300 font-medium">
+                          Loaded: {item.loaded}
+                        </span>
+                      )}
+                      {item.returned > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-medium">
+                          Returned: {item.returned}
+                        </span>
+                      )}
+                      {item.damaged > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 font-medium">
+                          Damaged: {item.damaged}
+                        </span>
+                      )}
+                      {item.received > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium">
+                          Received: {item.received}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           )}
+
+          {/* Movements Table / Cards */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm">
+            {filteredMovements.length === 0 ? (
+              <div className="py-14 text-center text-slate-400 text-xs">
+                <ArrowRightLeft className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                <p className="font-semibold text-slate-600 dark:text-slate-300">No stock movements found.</p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-300 tracking-wider">
+                        <th className="py-3 px-4">Timestamp</th>
+                        <th className="py-3 px-4">Movement Type</th>
+                        <th className="py-3 px-4">Item / SKU</th>
+                        <th className="py-3 px-3 text-center">Qty</th>
+                        <th className="py-3 px-4">Source &rarr; Target</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                      {filteredMovements.map((m) => {
+                        const { label, badge } = getHumanMovementLabel(m.movementType);
+                        return (
+                          <tr key={m.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
+                            <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                              {m.isGrouped ? (
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {m.groupedDate} (Daily Total)
+                                </span>
+                              ) : (
+                                formatMovementTimestamp(m.timestamp || m.createdAt)
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${badge}`}>
+                                {m.isGrouped ? 'Consolidated Road Sale' : label}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-bold text-slate-900 dark:text-white block">{m.productName}</span>
+                              <span className="text-[10px] font-mono text-slate-400">{m.sku}</span>
+                            </td>
+                            <td className="py-3 px-3 text-center font-bold font-mono text-slate-900 dark:text-white">
+                              {m.quantity}
+                            </td>
+                            <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                              {m.sourceLocation} &rarr; {m.targetLocation}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Cards View */}
+                <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-700/60">
+                  {filteredMovements.map((m) => {
+                    const { label, badge } = getHumanMovementLabel(m.movementType);
+                    return (
+                      <div key={m.id} className="p-3.5 space-y-2 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${badge}`}>
+                            {m.isGrouped ? 'Consolidated Road Sale' : label}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400">
+                            {m.isGrouped ? m.groupedDate : formatMovementTimestamp(m.timestamp || m.createdAt)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 dark:text-white truncate">{m.productName}</p>
+                            <p className="font-mono text-[10px] text-slate-400">{m.sku}</p>
+                          </div>
+                          <span className="font-mono font-bold text-sm text-slate-900 dark:text-white flex-shrink-0">
+                            {m.quantity} units
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-gray-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 font-mono">
+                          <span>{m.sourceLocation} &rarr; {m.targetLocation}</span>
+                          {m.isGrouped && (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[10px]">Daily Consolidation</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
-      {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      {/* -------------------------------------------------------------
           OPERATIONAL MODALS
-         â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+         ------------------------------------------------------------- */}
       <LoadVanStockModal
         isOpen={modalLoadOpen}
         onClose={() => {
@@ -1691,6 +2674,26 @@ export default function VanStockManagement() {
       <OwnerSignatureModal
         isOpen={modalOwnerSignOpen}
         onClose={() => setModalOwnerSignOpen(false)}
+      />
+
+      <SignaturePadModal
+        isOpen={signingModalRole !== null}
+        onClose={() => setSigningModalRole(null)}
+        onSave={handleSignatureModalSave}
+        defaultSignerName={
+          signingModalRole === 'owner'
+            ? activeManifest?.ownerSignedBy || dailyManifest?.ownerSignedBy || 'W. Liyanage (Managing Director / Owner)'
+            : activeManifest?.repSignedBy || dynamicRepName || vehicle?.repName || 'Kamal Perera'
+        }
+        title={
+          signingModalRole === 'owner'
+            ? 'Warehouse Keeper / Owner Digital Signature'
+            : 'Sales Representative Digital Acceptance Signature'
+        }
+        vehicleId={vehicle?.id || 'VAN-01'}
+        manifestNo={activeManifest?.manifestNo || dailyManifest?.manifestNo || `MAN-${activeOperatingDate.replace(/-/g, '')}-01`}
+        uncheckedCount={filteredVanStock.filter((i) => !isItemCheckedMorning(i)).length}
+        totalCount={filteredVanStock.length}
       />
     </VanStockLayout>
   );

@@ -64,7 +64,7 @@ export default function AddVanStockModal({ isOpen, onClose }) {
     setQuantity((prev) => Math.min(availableWarehouseStock, (Number(prev) || 0) + inc));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!productId) {
       setError('Select a product to load.');
@@ -81,7 +81,7 @@ export default function AddVanStockModal({ isOpen, onClose }) {
     }
 
     try {
-      loadVanStock({
+      await loadVanStock({
         productId: Number(productId),
         quantity: qty,
         repName: vehicle.repName || 'Kamal Perera',

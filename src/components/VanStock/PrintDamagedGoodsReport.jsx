@@ -61,7 +61,7 @@ export default function PrintDamagedGoodsReport({
 
   const modalContent = (
     <div className="fixed inset-0 z-[120] flex flex-col bg-slate-900/80 backdrop-blur-md overflow-y-auto print:bg-white print:p-0">
-      {/* Action Toolbar â€” hidden during print */}
+      {/* Action Toolbar - hidden during print */}
       <div className="no-print sticky top-0 z-10 flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 shadow-md">
         <div className="flex items-center gap-2">
           <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
@@ -89,7 +89,7 @@ export default function PrintDamagedGoodsReport({
         </div>
       </div>
 
-      {/* A4 Document Viewport â€” Natural Scrollbar-Free Viewport */}
+      {/* A4 Document Viewport - Natural Scrollbar-Free Viewport */}
       <div className="flex-1 flex justify-center py-2 sm:py-3 px-2 sm:px-4 print:p-0 print:m-0">
         <div
           id="damaged-goods-report-sheet"
@@ -112,10 +112,10 @@ export default function PrintDamagedGoodsReport({
                   Liyanage Distributors
                 </h1>
                 <p className="text-[10.5px] font-semibold text-slate-700">
-                  Hardware & Electrical Wholesaler â€¢ Central Quarantine & Defect Control
+                  Hardware & Electrical Wholesaler * Central Quarantine & Defect Control
                 </p>
                 <p className="text-[9.5px] text-slate-500">
-                  Hakmana Road, Deiyandara, Southern Province, Sri Lanka â€¢ Tel: 041-2268123 / 077-1112233
+                  Hakmana Road, Deiyandara, Southern Province, Sri Lanka * Tel: 041-2268123 / 077-1112233
                 </p>
               </div>
             </div>
@@ -129,7 +129,7 @@ export default function PrintDamagedGoodsReport({
             </div>
           </div>
 
-          {/* Audit Scope / Context Metadata â€” Eco Clean White Grid */}
+          {/* Audit Scope / Context Metadata - Eco Clean White Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2 p-2 rounded-lg bg-white border border-slate-300 text-[10px]">
             <div>
               <span className="text-[8.5px] uppercase text-slate-500 block font-semibold">Audit Date Scope</span>
@@ -149,7 +149,7 @@ export default function PrintDamagedGoodsReport({
             </div>
           </div>
 
-          {/* KPI Summary Boxes â€” Low-Ink Outlined Design */}
+          {/* KPI Summary Boxes - Low-Ink Outlined Design */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2">
             <div className="p-2 rounded-lg border border-slate-300 bg-white">
               <span className="text-[8.5px] uppercase font-semibold text-slate-500 block">Total Defective Units</span>
@@ -173,7 +173,7 @@ export default function PrintDamagedGoodsReport({
             </div>
           </div>
 
-          {/* Itemized Defect Table â€” Rebalanced Proportions with Strict Wrapping & Zero Horizontal Overflow */}
+          {/* Itemized Defect Table - Rebalanced Proportions with Strict Wrapping & Zero Horizontal Overflow */}
           <table className="table-fixed w-full border-collapse my-2 text-left">
             <colgroup>
               <col style={{ width: '3%' }} />
@@ -273,12 +273,7 @@ export default function PrintDamagedGoodsReport({
             </tfoot>
           </table>
 
-          {/* Audit Verification Statement â€” Compact Border */}
-          <div className="p-2 my-2 rounded border border-slate-300 bg-transparent text-[9px] text-slate-700 leading-relaxed">
-            <strong>Contamination Prevention Certification:</strong> The items listed above have been inspected and physically quarantined in the secure Damaged Goods area. Under company protocol, quarantined items are strictly barred from sellable van stock until formally replaced by manufacturer warranty credit or written off as authorized scrap.
-          </div>
-
-          {/* Dual Signature Blocks â€” Spacious Layout Matching Manifest Report */}
+          {/* Dual Signature Blocks - Spacious Layout Matching Manifest Report */}
           <div className="grid grid-cols-2 gap-8 pt-10 mt-4 border-t border-slate-300">
             <div className="text-center flex flex-col items-center">
               <div className="h-12 flex items-center justify-center mb-1">

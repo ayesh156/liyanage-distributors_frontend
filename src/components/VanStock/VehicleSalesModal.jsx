@@ -7,10 +7,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Receipt, Plus, Trash2, AlertCircle, ShoppingCart } from 'lucide-react';
+import { X, Receipt, Trash2, AlertCircle, ShoppingCart, FileText, Store } from 'lucide-react';
 import { toast } from 'react-toastify';
-import SmartCombobox from '../ui/SmartCombobox';
+import Combobox from '@/components/ui/combobox';
 import useVanStockStore from '../../hooks/useVanStockStore';
+import useAppStore from '../../hooks/useAppStore';
 import { calcNetUnitPrice, calcTotalRealValue, formatLKR } from '../../data/vanStockData';
 
 export default function VehicleSalesModal({
@@ -23,12 +24,30 @@ export default function VehicleSalesModal({
   const products = useVanStockStore((s) => s.products);
   const vehicle = useVanStockStore((s) => s.vehicle);
   const recordVehicleSale = useVanStockStore((s) => s.recordVehicleSale);
+  const shops = useAppStore((s) => s.shops);
 
   const [customerName, setCustomerName] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Active stores from database mapped for searchable Combobox
+  const storeOptions = useMemo(() => {
+    return (shops || [])
+      .filter((s) => s.active !== false)
+      .map((s) => ({
+        value: s.name,
+        label: s.name,
+        subtitle: `Route: ${s.route || 'General'} • Code: #${s.id}`,
+      }));
+  }, [shops]);
+
+  // Manual bill mode — sets the fixed value 'manual_bill' as the invoice reference
+  const handleSetManualBill = () => {
+    setInvoiceNo('manual_bill');
+    toast.success('Invoice reference set to manual_bill.');
+  };
 
   // Available sellable items on the van
   const availableVanItems = useMemo(
@@ -43,7 +62,7 @@ export default function VehicleSalesModal({
   useEffect(() => {
     if (isOpen) {
       setCustomerName('');
-      setInvoiceNo(`INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`);
+      setInvoiceNo('');
       setError('');
 
       // Auto-populate invoice with the row-selected product if launched with item context
@@ -211,43 +230,64 @@ export default function VehicleSalesModal({
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
+            <div className="overflow-visible relative z-40">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Hardware Customer / Store Name <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="e.g. Wickrama Hardware Morawaka"
-                className="w-full px-3.5 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
-              />
+              <div className="space-y-1.5">
+                <Combobox
+                  placeholder="Search registered stores..."
+                  searchPlaceholder="Type store name, route, or code..."
+                  options={storeOptions}
+                  value={customerName}
+                  onChange={(val) => setCustomerName(val)}
+                  emptyMessage="Store not found. Type manual name below."
+                />
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Or enter custom store/customer name..."
+                  className="w-full px-3.5 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Invoice Reference No
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Invoice Reference No
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSetManualBill}
+                  className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <FileText size={11} /> Manual Bill
+                </button>
+              </div>
               <input
                 type="text"
                 value={invoiceNo}
                 onChange={(e) => setInvoiceNo(e.target.value)}
+                placeholder="Enter invoice / bill book number..."
                 className="w-full font-mono px-3.5 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
               />
             </div>
           </div>
 
           {/* Add item to invoice */}
-          <div>
+          <div className="overflow-visible relative z-30">
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Add Products from Active Van Stock
             </label>
-            <SmartCombobox
-              portal={true}
+            <Combobox
               placeholder="Search van on-hand items to add..."
+              searchPlaceholder="Search product by name or SKU..."
               options={productOptions}
               value=""
-              onSelect={(opt) => handleAddItem(opt.value)}
+              onChange={(val) => handleAddItem(val)}
+              emptyMessage="No matching van stock products found."
             />
           </div>
 
@@ -334,7 +374,7 @@ export default function VehicleSalesModal({
               className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-accent-600 hover:bg-accent-700 active:scale-95 text-white shadow-md shadow-accent-600/20 disabled:opacity-50"
             >
               <Receipt size={15} />
-              <span>{isSubmitting ? 'Recording...' : 'Generate Invoice & Deplete Van'}</span>
+              <span>{isSubmitting ? 'Recording...' : 'Save & Deplete Van'}</span>
             </button>
           </div>
         </form>

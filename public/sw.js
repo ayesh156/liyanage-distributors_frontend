@@ -81,8 +81,16 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Never cache non-GET requests or backend REST API endpoints
-  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+  // 1. Never cache non-GET requests, backend REST API endpoints, or local Vite dev server modules
+  if (
+    request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.pathname.includes('/@vite/') ||
+    url.pathname.includes('/node_modules/.vite/') ||
+    url.pathname.startsWith('/src/')
+  ) {
     return;
   }
 
