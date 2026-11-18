@@ -189,7 +189,7 @@ export default function LogDamagedGoodsModal({
                 Log Damaged Goods
               </h3>
               <p className="text-xs text-rose-700 dark:text-rose-400">
-                Move damaged items from {vehicle?.id || 'VAN-01'} to Quarantine
+                Move damaged items from Van to Quarantine
               </p>
             </div>
           </div>

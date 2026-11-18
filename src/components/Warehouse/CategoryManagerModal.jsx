@@ -11,6 +11,7 @@ import { X, Layers, Plus, Edit2, Trash2, Check, AlertCircle, RefreshCw } from 'l
 import { toast } from 'react-toastify';
 import useVanStockStore from '../../hooks/useVanStockStore';
 import useAppStore from '../../hooks/useAppStore';
+import ConfirmActionModal from '../ui/ConfirmActionModal';
 
 export default function CategoryManagerModal({ isOpen, onClose }) {
   const categories = useVanStockStore((s) => s.categories);
@@ -26,6 +27,7 @@ export default function CategoryManagerModal({ isOpen, onClose }) {
   const [editingName, setEditingName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [catToDelete, setCatToDelete] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -99,19 +101,30 @@ export default function CategoryManagerModal({ isOpen, onClose }) {
     }
   };
 
-  const handleDelete = async (cat) => {
-    if (!window.confirm(`Are you sure you want to delete category "${cat.name}"?`)) return;
+  const handleDelete = (cat) => {
+    setCatToDelete(cat);
+  };
+
+  const confirmDeleteCategory = async () => {
+    if (!catToDelete) return;
+    const targetCat = catToDelete;
+    setCatToDelete(null);
     setLoading(true);
     setError('');
     try {
-      await deleteCategory(cat.id);
+      await deleteCategory(targetCat.id);
       if (typeof appFetchCategories === 'function') {
         await appFetchCategories();
       }
-      toast.success(`Category "${cat.name}" deleted.`);
+      toast.success(`Category "${targetCat.name}" deleted.`);
     } catch (err) {
-      setError(err.message || 'Failed to delete category.');
-      toast.error(err.message || 'Failed to delete category.');
+      const msg = err?.message || '';
+      if (msg.includes('404') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('already deleted')) {
+        toast.info(`Category "${targetCat.name}" is no longer active.`);
+      } else {
+        setError(err.message || 'Failed to delete category.');
+        toast.error(err.message || 'Failed to delete category.');
+      }
     } finally {
       setLoading(false);
     }
@@ -186,7 +199,7 @@ export default function CategoryManagerModal({ isOpen, onClose }) {
           <div className="divide-y divide-gray-100 dark:divide-slate-700/60 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden bg-slate-50/40 dark:bg-slate-900/40">
             {categories.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
-                No custom categories found. Add your first category above.
+                No categories found. Add your first category above.
               </div>
             ) : (
               categories.map((cat) => {
@@ -274,6 +287,17 @@ export default function CategoryManagerModal({ isOpen, onClose }) {
             Done
           </button>
         </div>
+
+        {/* Themed Confirmation Modal */}
+        <ConfirmActionModal
+          isOpen={Boolean(catToDelete)}
+          onClose={() => setCatToDelete(null)}
+          onConfirm={confirmDeleteCategory}
+          title="Delete Category"
+          message={`Are you sure you want to delete category "${catToDelete?.name}"? Any products assigned to this category will automatically fallback to "Uncategorized".`}
+          confirmLabel="Yes, Delete Category"
+          variant="danger"
+        />
       </div>
     </div>,
     document.body

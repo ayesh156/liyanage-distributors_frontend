@@ -18,47 +18,29 @@ import {
   generateAutoSku,
 } from '../../data/vanStockData';
 
-const STANDARD_UNITS = [
-  'Unit',
-  'Roll',
-  'Box',
-  'Length',
-  'Tin',
-  'Pkt',
-  'Pkt of 100',
-  'm',
-  'Kg',
-];
-
-export default function AddProductModal({ isOpen, onClose, productToEdit = null }) {
+export default function AddProductModal({ isOpen, onClose, productToEdit = null, onSuccess = null }) {
   const saveProduct = useVanStockStore((s) => s.saveProduct);
   const products = useVanStockStore((s) => s.products);
   const categories = useVanStockStore((s) => s.categories);
   const fetchCategories = useVanStockStore((s) => s.fetchCategories);
+  const fetchInitialData = useVanStockStore((s) => s.fetchInitialData);
 
   const categoryList = useMemo(() => {
-    const set = new Set();
-    if (categories && categories.length > 0) {
-      categories.forEach((c) => {
-        if (c.name) set.add(c.name);
-      });
-    }
-    products.forEach((p) => {
-      if (p.category) set.add(p.category);
-    });
-    return Array.from(set);
-  }, [categories, products]);
+    if (!categories || categories.length === 0) return [];
+    return categories.map((c) => c.name).filter(Boolean);
+  }, [categories]);
 
   const isEdit = Boolean(productToEdit);
+  const warehouseQtyInputRef = React.useRef(null);
 
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState(categoryList[0] || '');
-  const [unit, setUnit] = useState(STANDARD_UNITS[0]);
   const [basePrice, setBasePrice] = useState('');
   const [companyDiscountPercent, setCompanyDiscountPercent] = useState('10');
-  const [targetCapacity, setTargetCapacity] = useState('50');
-  const [initialQuantity, setInitialQuantity] = useState('50');
+  const [targetCapacity, setTargetCapacity] = useState('1');
+  const [initialQuantity, setInitialQuantity] = useState('1');
+  const [warehouseQty, setWarehouseQty] = useState('0');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -67,28 +49,48 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
       if (typeof fetchCategories === 'function') {
         fetchCategories();
       }
+      const liveCatNames = (categories || []).map((c) => c.name).filter(Boolean);
       if (productToEdit) {
         setSku(productToEdit.sku || '');
         setName(productToEdit.name || '');
-        setCategory(productToEdit.category || (categoryList.length > 0 ? categoryList[0] : ''));
-        setUnit(productToEdit.unit || STANDARD_UNITS[0]);
+        setCategory(
+          productToEdit.category && liveCatNames.includes(productToEdit.category)
+            ? productToEdit.category
+            : (liveCatNames[0] || '')
+        );
         setBasePrice(String(productToEdit.basePrice || ''));
         setCompanyDiscountPercent(String(productToEdit.companyDiscountPercent ?? '0'));
-        setTargetCapacity(String(productToEdit.targetCapacity || '50'));
+        setTargetCapacity(String(productToEdit.targetCapacity || '1'));
+        setWarehouseQty(String(productToEdit.warehouseQty ?? productToEdit.quantity ?? '0'));
         setInitialQuantity('0');
+
+        if (productToEdit.autoFocusStock) {
+          setTimeout(() => {
+            warehouseQtyInputRef.current?.focus();
+            warehouseQtyInputRef.current?.select();
+          }, 120);
+        }
       } else {
         setSku('');
         setName('');
-        setCategory(categoryList.length > 0 ? categoryList[0] : '');
-        setUnit(STANDARD_UNITS[0]);
+        setCategory(liveCatNames[0] || '');
         setBasePrice('');
         setCompanyDiscountPercent('10');
-        setTargetCapacity('50');
-        setInitialQuantity('50');
+        setTargetCapacity('1');
+        setInitialQuantity('1');
+        setWarehouseQty('0');
       }
       setError('');
     }
-  }, [isOpen, productToEdit, fetchCategories]);
+  }, [isOpen, productToEdit]);
+
+  // Sync category selection when categories finish loading asynchronously while modal is open
+  useEffect(() => {
+    if (isOpen && !category && categories?.length > 0) {
+      const defaultCat = categories[0]?.name;
+      if (defaultCat) setCategory(defaultCat);
+    }
+  }, [isOpen, categories, category]);
 
   const netUnitPrice = useMemo(() => {
     return calcNetUnitPrice(Number(basePrice) || 0, Number(companyDiscountPercent) || 0);
@@ -108,7 +110,7 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
     setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -131,21 +133,31 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
         id: productToEdit ? productToEdit.id : undefined,
         sku: sku.trim().toUpperCase(),
         name: name.trim(),
-        category,
-        unit,
+        category: category || 'Uncategorized',
+        unit: 'Unit',
         basePrice: Number(basePrice),
         companyDiscountPercent: Number(companyDiscountPercent) || 0,
-        targetCapacity: Number(targetCapacity) || 50,
+        targetCapacity: Number(targetCapacity) || 1,
         initialQuantity: Number(initialQuantity) || 0,
+        warehouseQty: isEdit ? Number(warehouseQty) || 0 : undefined,
       };
 
-      const result = saveProduct(payload);
+      const result = await saveProduct(payload);
+
+      // Immediately invoke parent refresh callback or store refetch BEFORE closing modal and showing toast
+      if (typeof onSuccess === 'function') {
+        await onSuccess(result);
+      } else if (typeof fetchInitialData === 'function') {
+        await fetchInitialData();
+      }
+
+      onClose();
+
       if (result.mode === 'edit') {
         toast.success(`Product "${payload.name}" updated successfully.`);
       } else {
         toast.success(`New SKU "${payload.sku}" registered with ${payload.initialQuantity} opening units.`);
       }
-      onClose();
     } catch (err) {
       setError(err.message || 'Failed to save product SKU.');
     } finally {
@@ -236,7 +248,7 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
             />
           </div>
 
-          {/* Category & Unit */}
+          {/* Category & Central Warehouse Stock Quantity */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <SearchableSelect
@@ -244,19 +256,27 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
                 value={category}
                 onChange={setCategory}
                 options={categoryList}
-                placeholder="Select category..."
+                placeholder={categoryList.length === 0 ? "No categories available" : "Select category..."}
+                emptyMessage="No categories available"
                 portal
               />
             </div>
 
             <div>
-              <SearchableSelect
-                label="Stocking Unit"
-                value={unit}
-                onChange={setUnit}
-                options={STANDARD_UNITS}
-                placeholder="Select unit..."
-                portal
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                {isEdit ? 'Warehouse On-Hand Qty' : 'Initial Central Warehouse Stock'}
+              </label>
+              <input
+                ref={isEdit ? warehouseQtyInputRef : undefined}
+                type="number"
+                min="0"
+                step="any"
+                value={isEdit ? warehouseQty : initialQuantity}
+                onChange={(e) =>
+                  isEdit ? setWarehouseQty(e.target.value) : setInitialQuantity(e.target.value)
+                }
+                placeholder={isEdit ? 'e.g. 50' : 'e.g. 1'}
+                className="w-full h-[40px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-200 hover:border-gray-300 dark:border-slate-700 dark:hover:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 transition-all"
               />
             </div>
           </div>
@@ -302,28 +322,11 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
                 min="1"
                 value={targetCapacity}
                 onChange={(e) => setTargetCapacity(e.target.value)}
-                placeholder="50"
+                placeholder="1"
                 className="w-full px-3 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
               />
             </div>
           </div>
-
-          {/* Opening Warehouse Quantity (Create Mode Only) */}
-          {!isEdit && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Initial Central Warehouse Stock ({unit})
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={initialQuantity}
-                onChange={(e) => setInitialQuantity(e.target.value)}
-                placeholder="e.g. 100"
-                className="w-full px-3.5 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
-              />
-            </div>
-          )}
 
           {/* Dynamic Valuation Summary */}
           {Number(basePrice) > 0 && (
@@ -332,6 +335,12 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null 
                 <span className="text-slate-500 dark:text-slate-400">Computed Net Unit Price:</span>
                 <span className="font-semibold text-slate-900 dark:text-white">{formatLKR(netUnitPrice)}</span>
               </div>
+              {isEdit && Number(warehouseQty) > 0 && (
+                <div className="flex items-center justify-between font-bold text-accent-700 dark:text-accent-300 pt-1 border-t border-slate-200 dark:border-slate-700">
+                  <span>Warehouse Stock Valuation:</span>
+                  <span>{formatLKR(calcTotalRealValue(netUnitPrice, Number(warehouseQty) || 0))}</span>
+                </div>
+              )}
               {!isEdit && Number(initialQuantity) > 0 && (
                 <div className="flex items-center justify-between font-bold text-accent-700 dark:text-accent-300 pt-1 border-t border-slate-200 dark:border-slate-700">
                   <span>Opening Stock Valuation:</span>

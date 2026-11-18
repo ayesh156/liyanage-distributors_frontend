@@ -203,14 +203,18 @@ export function DropdownMenuItem({
       role="menuitem"
       disabled={disabled}
       onClick={handleClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold transition-colors text-left cursor-pointer ${
+      className={`w-full flex flex-row items-center justify-start gap-2.5 px-3.5 py-2 text-xs font-semibold transition-colors text-left cursor-pointer whitespace-nowrap ${
         destructive
           ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40'
           : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-700/60 hover:text-slate-900 dark:hover:text-white'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : ''} ${className}`}
     >
-      {Icon && <Icon size={14} className={destructive ? 'text-rose-500' : 'text-slate-400 dark:text-zinc-400'} />}
-      <span className="truncate">{children}</span>
+      {Icon && <Icon size={14} className={`shrink-0 ${destructive ? 'text-rose-500' : 'text-slate-400 dark:text-zinc-400'}`} />}
+      {typeof children === 'string' ? (
+        <span className="truncate">{children}</span>
+      ) : (
+        children
+      )}
     </button>
   );
 }

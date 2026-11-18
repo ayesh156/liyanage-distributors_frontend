@@ -435,7 +435,7 @@ const PrintFullReport = ({
       : toMoneyNumber(grandTotal);
 
   const companyName = 'Liyanage Distributors';
-  const companyAddress = 'Hakmana Road, Deiyandara.';
+  const companyAddress = 'Hakmana Road, Deiyandara, Matara.';
   const companyTel = '070-5237647 / 071-5944711';
 
   return (
@@ -1452,6 +1452,12 @@ const PrintFullReport = ({
           </div>
         )}
 
+        {/* Global Footer */}
+        <div style={{ textAlign: 'center', marginTop: '24px', paddingTop: '10px', borderTop: '1px solid #000' }}>
+          <p style={{ fontSize: '8pt', color: '#000000', margin: 0, fontWeight: 600 }}>
+            System by: nebulainfinite.com - 0783233760
+          </p>
+        </div>
       </div>
     </>
   );

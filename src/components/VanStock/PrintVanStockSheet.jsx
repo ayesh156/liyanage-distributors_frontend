@@ -13,6 +13,18 @@ import useVanStockStore from '../../hooks/useVanStockStore';
 import { calcNetUnitPrice, calcTotalRealValue, formatLKR, formatDateYYYYMMDD } from '../../data/vanStockData';
 import { DEFAULT_OWNER_SIGNATURE } from '../../data/defaultOwnerSignature';
 
+function formatPrintDateTime(d = new Date()) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  let hours = dt.getHours();
+  const mins = String(dt.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  return `${yyyy}-${mm}-${dd} ${String(hours).padStart(2, '0')}:${mins} ${ampm}`;
+}
+
 export default function PrintVanStockSheet({ isOpen, onClose }) {
   const vanStock = useVanStockStore((s) => s.vanStock);
   const vehicle = useVanStockStore((s) => s.vehicle);
@@ -41,12 +53,17 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
     return sum + calcTotalRealValue(net, item.quantity);
   }, 0);
 
-  const currentDate = new Date().toLocaleDateString('en-LK', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  function formatPrintDateTime(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth()+1).padStart(2,'0');
+    const dd = String(dt.getDate()).padStart(2,'0');
+    let hours = dt.getHours();
+    const mins = String(dt.getMinutes()).padStart(2,'0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${yyyy}-${mm}-${dd} ${String(hours).padStart(2,'0')}:${mins} ${ampm}`;
+  }
 
   const manifestDocNo = dailyManifest?.manifestNo || `MAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`;
   const manifestRev = dailyManifest?.manifestRevision || 1;
@@ -90,92 +107,61 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
       <div className="flex-1 flex justify-center py-2 sm:py-3 px-2 sm:px-4 print:p-0 print:m-0 print:w-full print:max-w-full">
         <div
           id="van-stock-manifest-sheet"
-          className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 py-6 sm:py-8 px-4 sm:px-6 shadow-xl rounded-xl print:shadow-none print:rounded-none print:m-0 print:py-4 print:px-[6mm] print:w-full print:max-w-full text-xs overflow-visible"
+          className="w-full max-w-[210mm] min-h-[297mm] bg-white text-black pt-3 pb-4 sm:pt-4 sm:pb-6 px-4 sm:px-6 shadow-xl rounded-xl print:shadow-none print:rounded-none print:m-0 print:pt-2 print:pb-3 print:px-[6mm] print:w-full print:max-w-full text-xs overflow-visible"
           style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}
         >
-          {/* Header - Stationery Branding */}
-          <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
-            <div className="flex items-center gap-3.5">
+          {/* Header - Stationery Branding (Compact Height & Bottom-Aligned Title Box) */}
+          <div className="flex items-end justify-between border-b-2 border-black pb-1.5 pt-1">
+            <div className="flex items-center gap-3">
               <img
                 src="/inv_logo.png"
                 alt="Liyanage Distributors Logo"
-                className="w-14 h-14 object-contain"
+                className="w-12 h-12 object-contain"
                 onError={(e) => {
                   e.target.style.display = 'none';
                 }}
               />
               <div>
-                <h1 className="text-lg sm:text-xl font-extrabold uppercase tracking-tight text-slate-900">
+                <h1 className="text-xl font-extrabold uppercase tracking-tight text-black leading-tight">
                   Liyanage Distributors
                 </h1>
-                <p className="text-[11px] font-semibold text-slate-700">
-                  Hardware & Electrical Goods Wholesaler & Regional Distributor
-                </p>
-                <p className="text-[10px] text-slate-500">
-                  Hakmana Road, Deiyandara, Southern Province, Sri Lanka * Tel: 041-2268123 / 077-1112233
+                <p className="text-xs font-semibold text-black mt-0.5">
+                  Hakmana Road, Deiyandara, Matara. * Tel: 070-5237647 / 071-5944711
                 </p>
               </div>
             </div>
 
-            <div className="text-right flex-shrink-0">
-              <span className="inline-block px-2.5 py-0.5 rounded border border-slate-900 text-slate-900 text-[10px] font-bold tracking-widest uppercase bg-transparent">
-                Daily Load Manifest
+            <div className="text-right flex-shrink-0 self-end">
+              <span className="inline-block px-2.5 py-0.5 rounded border-2 border-black text-black text-xs font-black tracking-widest uppercase bg-transparent">
+                VAN STOCK REPORT
               </span>
-              <p className="mt-1 font-mono font-bold text-xs text-slate-900">
-                {manifestDocNo}
-                {manifestRev > 1 && (
-                  <span className="ml-1 text-[10px] px-1 py-0.2 rounded border border-slate-400 font-normal">
-                    R{manifestRev}
-                  </span>
-                )}
+              <p className="mt-0.5 font-mono font-bold text-xs text-black">
+                {formatPrintDateTime(new Date())}
               </p>
-              <p className="text-[10px] text-slate-600 mt-0.5">{currentDate}</p>
-            </div>
-          </div>
-
-          {/* Vehicle & Dispatch Metadata Grid - Eco White Paper Design */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3 p-2.5 rounded-lg bg-white border border-slate-300 text-[11px]">
-            <div>
-              <span className="text-[9px] uppercase text-slate-500 block font-semibold">Vehicle ID / Truck</span>
-              <span className="font-bold text-slate-900">{vehicle.id} ({vehicle.plateNumber})</span>
-            </div>
-            <div>
-              <span className="text-[9px] uppercase text-slate-500 block font-semibold">Operating Territory</span>
-              <span className="font-bold text-slate-900">All Routes</span>
-            </div>
-            <div>
-              <span className="text-[9px] uppercase text-slate-500 block font-semibold">Sales Representative</span>
-              <span className="font-bold text-slate-900">{vehicle.repName}</span>
-            </div>
-            <div>
-              <span className="text-[9px] uppercase text-slate-500 block font-semibold">Driver / Escort</span>
-              <span className="font-bold text-slate-900">{vehicle.driver}</span>
             </div>
           </div>
 
           {/* Itemized Table - Executive Low-Ink Proportions with Explicit Colgroup (100% Total Width Allocation) */}
-          <table className="table-fixed w-full border-collapse my-3 text-left">
+          <table className="table-fixed w-full border-collapse mt-2 mb-3 text-left">
             <colgroup>
               <col style={{ width: '4%' }} />
-              <col style={{ width: '13%' }} />
-              <col style={{ width: '33%' }} />
-              <col style={{ width: '7%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '38%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '11%' }} />
               <col style={{ width: '12%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '11%' }} />
             </colgroup>
             <thead>
               {/* Table Headers: Whitespace-normal, word-breaking, and tight leading ensure multi-line drop without clipping or exceeding A4 sheet width */}
-              <tr className="border-y-2 border-slate-800 bg-transparent text-slate-900 text-[10px] uppercase font-bold tracking-wider">
-                <th className="py-2 px-1 text-center whitespace-normal break-words leading-tight">#</th>
-                <th className="py-2 px-2 text-left whitespace-normal break-words leading-tight">SKU</th>
-                <th className="py-2 px-2 text-left whitespace-normal break-words leading-tight">Product Description</th>
-                <th className="py-2 px-1 text-center whitespace-normal break-words leading-tight">Unit</th>
-                <th className="py-2 px-2 text-right whitespace-normal break-words leading-tight">Loaded Qty</th>
-                <th className="py-2 px-2 text-right whitespace-normal break-words leading-tight">Net Price</th>
-                <th className="py-2 px-2 text-right whitespace-normal break-words leading-tight">Total Value</th>
-                <th className="py-2 px-1 text-center whitespace-normal break-words leading-tight">Verification</th>
+              <tr className="border-y-2 border-black bg-transparent text-[11px] font-bold text-black uppercase tracking-wider">
+                <th className="py-2 px-1 text-center whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">#</th>
+                <th className="py-2 px-2 text-left whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">SKU</th>
+                <th className="py-2 px-2 text-left whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">Product Description</th>
+                <th className="py-2 px-2 text-right whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">Loaded Qty</th>
+                <th className="py-2 px-2 text-right whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">Net Price</th>
+                <th className="py-2 px-2 text-right whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">Total Value</th>
+                <th className="py-2 px-1 text-center whitespace-normal break-words leading-tight text-[11px] font-bold text-black uppercase tracking-wider">Verification</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
@@ -186,37 +172,34 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
 
                 return (
                   <tr key={item.id} className="bg-white hover:bg-transparent">
-                    <td className="py-1.5 px-1 text-center text-slate-500 font-mono text-[10px]">
+                    <td className="py-1.5 px-1 text-center text-xs font-medium text-black font-mono">
                       {index + 1}
                     </td>
                     <td className="py-1.5 px-2 whitespace-nowrap">
-                      <span className="px-1.5 py-0.5 rounded border border-slate-300 text-slate-900 text-[10px] font-mono font-bold bg-transparent">
+                      <span className="px-1.5 py-0.5 rounded border border-black text-black text-xs font-mono font-bold bg-transparent">
                         {item.sku}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-slate-900 font-medium break-words leading-snug">
+                    <td className="py-1.5 px-2 text-xs font-medium text-black break-words leading-snug">
                       {item.productName}
                     </td>
-                    <td className="py-1.5 px-1 text-center text-slate-600 whitespace-nowrap">
-                      {item.unit}
-                    </td>
-                    <td className="py-1.5 px-2 text-right font-bold text-slate-900 font-mono whitespace-nowrap">
+                    <td className="py-1.5 px-2 text-right font-bold text-black font-mono text-xs whitespace-nowrap">
                       {item.quantity}
                     </td>
-                    <td className="py-1.5 px-2 text-right font-mono text-slate-800 whitespace-nowrap">
+                    <td className="py-1.5 px-2 text-right font-mono text-xs font-medium text-black whitespace-nowrap">
                       {netPrice.toFixed(2)}
                     </td>
-                    <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                    <td className="py-1.5 px-2 text-right font-mono font-bold text-xs text-black whitespace-nowrap">
                       {totalVal.toFixed(2)}
                     </td>
                     <td className="py-1.5 px-1 text-center whitespace-nowrap">
                       <span
-                        className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border bg-transparent ${
+                        className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border bg-transparent ${
                           isVerified
-                            ? 'border-emerald-700 text-emerald-800'
+                            ? 'border-black text-black'
                             : item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !item.repChecked)
-                            ? 'border-rose-700 text-rose-800'
-                            : 'border-amber-600 text-amber-700'
+                            ? 'border-black text-black'
+                            : 'border-black text-black'
                         }`}
                       >
                         {isVerified
@@ -231,17 +214,17 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-b-2 border-slate-800 bg-transparent font-bold text-[11px] text-slate-900">
-                <td colSpan={4} className="py-2 px-2 text-right uppercase tracking-wider">
+              <tr className="border-t-2 border-b-2 border-black bg-transparent text-xs font-bold text-black">
+                <td colSpan={3} className="py-2 px-2 text-right uppercase tracking-wider text-xs font-bold text-black">
                   Total Loaded Inventory Summary:
                 </td>
-                <td className="py-2 px-2 text-right font-mono text-xs whitespace-nowrap">
+                <td className="py-2 px-2 text-right font-mono text-xs font-bold text-black whitespace-nowrap">
                   {totalLoadedUnits} Units
                 </td>
-                <td className="py-2 px-2 text-right font-mono text-slate-600 whitespace-nowrap">
+                <td className="py-2 px-2 text-right font-mono text-xs font-bold text-black whitespace-nowrap">
                   LKR Total:
                 </td>
-                <td className="py-2 px-2 text-right font-mono text-xs text-slate-900 font-black whitespace-nowrap">
+                <td className="py-2 px-2 text-right font-mono text-xs font-bold text-black whitespace-nowrap">
                   {formatLKR(totalLoadedValue)}
                 </td>
                 <td></td>
@@ -250,7 +233,7 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
           </table>
 
           {/* Dual Signature Blocks - Eco Alignment with Crisp Wet-Ink Renders */}
-          <div className="grid grid-cols-2 gap-8 pt-4 mt-4 border-t border-slate-300">
+          <div className="grid grid-cols-2 gap-8 pt-4 mt-4 border-t border-black">
             {/* Owner / Dispatcher Signature Block */}
             <div className="text-center flex flex-col items-center">
               <div className="h-14 flex items-center justify-center mb-1">
@@ -261,15 +244,15 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
                     className="max-h-12 max-w-[180px] object-contain filter contrast-125"
                   />
                 ) : (
-                  <div className="text-[10px] text-slate-400 italic">Signature on file</div>
+                  <div className="text-[11px] text-black font-medium italic">Signature on file</div>
                 )}
               </div>
-              <div className="border-b border-dashed border-slate-500 w-3/4 mx-auto mb-1.5" />
-              <p className="font-bold text-slate-900 text-[10.5px]">Warehouse Dispatcher / Owner Signature</p>
-              <p className="text-[9.5px] text-slate-700 font-semibold">
+              <div className="border-b border-dashed border-black w-3/4 mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-black">Warehouse Dispatcher / Owner Signature</p>
+              <p className="text-[11px] font-medium text-black">
                 {dailyManifest?.ownerSignedBy || 'W. Liyanage (Managing Director / Owner)'}
               </p>
-              <p className="text-[8.5px] text-slate-500 font-mono mt-0.5">
+              <p className="text-[11px] font-medium text-black font-mono mt-0.5">
                 Timestamp:{' '}
                 {dailyManifest?.ownerSignedAt
                   ? formatDateYYYYMMDD(dailyManifest.ownerSignedAt, true)
@@ -287,22 +270,29 @@ export default function PrintVanStockSheet({ isOpen, onClose }) {
                     className="max-h-12 max-w-[180px] object-contain filter contrast-125"
                   />
                 ) : (
-                  <div className="h-12 flex items-center justify-center text-[10px] text-slate-400 italic">
+                  <div className="h-12 flex items-center justify-center text-[11px] text-black font-medium italic">
                     Awaiting field tablet sign-off
                   </div>
                 )}
               </div>
-              <div className="border-b border-dashed border-slate-500 w-3/4 mx-auto mb-1.5" />
-              <p className="font-bold text-slate-900 text-[10.5px]">Sales Representative Signature</p>
-              <p className="text-[9.5px] text-slate-700 font-semibold">
+              <div className="border-b border-dashed border-black w-3/4 mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-black">Sales Representative Signature</p>
+              <p className="text-[11px] font-medium text-black">
                 {dailyManifest?.repSignedBy || vehicle.repName}
               </p>
-              <p className="text-[8.5px] text-slate-500 font-mono mt-0.5">
+              <p className="text-[11px] font-medium text-black font-mono mt-0.5">
                 {dailyManifest?.repSignedAt
                   ? `Verified: ${new Date(dailyManifest.repSignedAt).toLocaleString()}`
                   : `Mobile: ${vehicle.repPhone}`}
               </p>
             </div>
+          </div>
+
+          {/* Global Footer */}
+          <div className="mt-8 pt-3 border-t border-black text-center">
+            <p className="text-[10px] font-medium text-black text-center">
+              System by: nebulainfinite.com - 0783233760
+            </p>
           </div>
         </div>
       </div>

@@ -215,7 +215,7 @@ export default function VanStockTransferDashboard() {
         notes: transferNotes || 'Split-view workbench transfer',
       });
       toast.success(
-        `Transferred ${parsedTransferQty} ${selectedProduct?.unit} to ${vehicle.id}.`
+        `Transferred ${parsedTransferQty} ${selectedProduct?.unit} to Van.`
       );
       setTransferQty('');
       setTransferNotes('');
@@ -291,7 +291,7 @@ export default function VanStockTransferDashboard() {
                 Discrepancy Action Needed: {uncheckedByRepItems.length} SKU{uncheckedByRepItems.length === 1 ? '' : 's'} Unchecked by Sales Rep
               </h4>
               <p className="text-amber-800 dark:text-amber-300 text-[11px] mt-0.5">
-                Physical truck count mismatch detected on {vehicle.id} (Manifest Rev #{dailyManifest?.manifestRevision || 1}). Reconcile transfer quantities or re-dispatch link.
+                Physical truck count mismatch detected on Van (Manifest Rev #{dailyManifest?.manifestRevision || 1}). Reconcile transfer quantities or re-dispatch link.
               </p>
             </div>
           </div>
@@ -321,13 +321,13 @@ export default function VanStockTransferDashboard() {
                   Central Main Store Warehouse (Source)
                 </h2>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Select available stock to transfer into {vehicle.id}
+                  Select available stock to transfer into Van
                 </p>
               </div>
             </div>
 
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 font-bold">
-              LOC_MAIN
+              Warehouse
             </span>
           </div>
 
@@ -500,7 +500,7 @@ export default function VanStockTransferDashboard() {
                 className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-accent-600 hover:bg-accent-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-accent-600/20 disabled:opacity-50 transition-all cursor-pointer"
               >
                 <ArrowRight size={16} />
-                <span>{isTransferring ? 'Transferring...' : `Transfer Stock to ${vehicle.id}`}</span>
+                <span>{isTransferring ? 'Transferring...' : 'Transfer Stock to Van'}</span>
               </button>
             </div>
           </form>
@@ -515,7 +515,7 @@ export default function VanStockTransferDashboard() {
               </div>
               <div>
                 <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Active Delivery Van ({vehicle.id} • {vehicle.plateNumber})
+                  Active Delivery Van
                 </h2>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Rep: {vehicle.repName} • Route: All Routes

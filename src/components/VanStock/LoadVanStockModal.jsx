@@ -17,6 +17,7 @@ import {
   Trash2,
   Check,
   Sparkles,
+  ChevronsUp,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Combobox from '@/components/ui/combobox';
@@ -28,7 +29,7 @@ import {
   formatLKR,
 } from '../../data/vanStockData';
 
-export default function LoadVanStockModal({ isOpen, onClose, initialProductId = null }) {
+export default function LoadVanStockModal({ isOpen, onClose, initialProductId = null, onSuccess = null }) {
   const products = useVanStockStore((s) => s.products);
   const mainStoreStock = useVanStockStore((s) => s.mainStoreStock);
   const vanStock = useVanStockStore((s) => s.vanStock);
@@ -56,8 +57,7 @@ export default function LoadVanStockModal({ isOpen, onClose, initialProductId = 
           const whQty = whItem ? whItem.quantity : 0;
           const currentVan = vItem ? vItem.quantity : 0;
           const targetPar = vItem?.targetCapacity || prod.targetCapacity || 100;
-          const restock = calcRestockNeeded(targetPar, currentVan);
-          const defaultQty = restock > 0 && whQty > 0 ? Math.min(restock, whQty) : Math.min(10, Math.max(1, whQty));
+          const defaultQty = 1;
           const net = calcNetUnitPrice(prod.basePrice, prod.companyDiscountPercent);
 
           setItems([
@@ -117,8 +117,7 @@ export default function LoadVanStockModal({ isOpen, onClose, initialProductId = 
     const vItem = vanStock.find((v) => v.productId === prodId);
     const currentVan = vItem ? vItem.quantity : 0;
     const targetPar = vItem?.targetCapacity || prod.targetCapacity || 100;
-    const restock = calcRestockNeeded(targetPar, currentVan);
-    const defaultQty = restock > 0 && whQty > 0 ? Math.min(restock, whQty) : Math.min(10, Math.max(1, whQty));
+    const defaultQty = 1;
     const net = calcNetUnitPrice(prod.basePrice, prod.companyDiscountPercent);
 
     setItems((prev) => [
@@ -202,10 +201,15 @@ export default function LoadVanStockModal({ isOpen, onClose, initialProductId = 
         notes: notes.trim(),
       });
 
-      toast.success(
-        `Successfully loaded ${totalLoadUnits} unit(s) across ${items.length} SKU(s) into ${vehicle?.id || 'VAN-01'}.`
-      );
+      if (typeof onSuccess === 'function') {
+        await onSuccess();
+      }
+
       onClose();
+
+      toast.success(
+        `Successfully loaded ${totalLoadUnits} unit(s) across ${items.length} SKU(s) into Van.`
+      );
     } catch (err) {
       setError(err.message || 'Failed to complete stock load.');
       toast.error(err.message || 'Failed to load stock.');
@@ -233,11 +237,11 @@ export default function LoadVanStockModal({ isOpen, onClose, initialProductId = 
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>Load Stock to Van</span>
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-300">
-                  LOC_MAIN &rarr; {vehicle?.id || 'VAN-01'}
+                  Warehouse &rarr; Van
                 </span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Transfer inventory from Central Warehouse into {vehicle?.id || 'VAN-01'} ({vehicle?.plateNumber || 'WP KDK-4521'})
+                Transfer inventory from Central Warehouse into Van
               </p>
             </div>
           </div>
@@ -331,18 +335,29 @@ export default function LoadVanStockModal({ isOpen, onClose, initialProductId = 
                             {item.currentVan} / {item.targetPar}
                           </td>
                           <td className="py-2.5 px-2 text-center">
-                            <input
-                              type="number"
-                              min="1"
-                              max={item.whQty}
-                              value={item.quantity}
-                              onChange={(e) => handleUpdateQty(item.productId, e.target.value)}
-                              className={`w-16 px-2 py-1 text-center font-bold font-mono rounded-lg border ${
-                                isOver
-                                  ? 'border-rose-500 bg-rose-50 text-rose-700'
-                                  : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white'
-                              } focus:outline-none focus:ring-1 focus:ring-accent-500`}
-                            />
+                            <div className="inline-flex items-center gap-1 justify-center">
+                              <input
+                                type="number"
+                                min="1"
+                                max={item.whQty}
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateQty(item.productId, e.target.value)}
+                                className={`w-16 px-2 py-1 text-center font-bold font-mono rounded-lg border ${
+                                  isOver
+                                    ? 'border-rose-500 bg-rose-50 text-rose-700'
+                                    : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white'
+                                } focus:outline-none focus:ring-1 focus:ring-accent-500`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQty(item.productId, item.whQty)}
+                                disabled={item.whQty <= 0}
+                                className="p-1 rounded-lg border border-gray-200 dark:border-slate-700 text-slate-500 hover:text-accent-600 hover:border-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/40 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                title="Fill all available qty"
+                              >
+                                <ChevronsUp size={14} />
+                              </button>
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-300">
                             {formatLKR(item.unitPrice)}
@@ -415,7 +430,7 @@ export default function LoadVanStockModal({ isOpen, onClose, initialProductId = 
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap active:scale-95"
             >
               <Check size={15} />
-              <span>{isSubmitting ? 'Transferring...' : `Load into ${vehicle?.id || 'VAN-01'}`}</span>
+              <span>{isSubmitting ? 'Transferring...' : 'Load into Van'}</span>
             </button>
           </div>
         </div>

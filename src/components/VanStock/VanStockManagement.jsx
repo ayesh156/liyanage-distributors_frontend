@@ -64,6 +64,7 @@ import EditVanItemQtyModal from './EditVanItemQtyModal';
 import OwnerSignatureModal from './OwnerSignatureModal';
 import SignaturePadModal from './SignaturePadModal';
 import SearchableSelect from '../ui/SearchableSelect';
+import ConfirmActionModal from '../ui/ConfirmActionModal';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -91,7 +92,7 @@ export function getHumanMovementLabel(type) {
   switch (type) {
     case 'VEHICLE_SALES_OUTBOUND':
       return {
-        label: 'Van Sale',
+        label: 'Road Sale',
         badge: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60',
       };
     case 'STORE_TO_VEHICLE_LOAD':
@@ -389,13 +390,14 @@ function UnifiedDayPillsCalendarFilter({
   onReset,
   label = 'Date Filter',
   resultCount,
+  extraRight,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const isTodaySelected = calendarDateRange.start === todayStr && calendarDateRange.end === todayStr;
 
   return (
-    <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
       {/* Day of Week Pills (Today, ALL, Mon - Sun) */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
@@ -435,55 +437,64 @@ function UnifiedDayPillsCalendarFilter({
         })}
       </div>
 
-      {/* Calendar Date Range Picker Popover Trigger + Result count + Reset */}
-      <div className="flex items-center gap-2 relative">
-        {resultCount !== undefined && (
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline mr-1">
-            {resultCount} item{resultCount === 1 ? '' : 's'}
-          </span>
-        )}
+      {/* Right-Hand Controls: Calendar Date Range Picker + Contextual Actions/Toggles */}
+      <div className="flex items-center gap-2.5 flex-wrap justify-between sm:justify-end">
+        {/* Calendar Date Range Picker Popover Trigger + Result count + Reset */}
+        <div className="flex items-center gap-2 relative">
+          {resultCount !== undefined && (
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline mr-1">
+              {resultCount} item{resultCount === 1 ? '' : 's'}
+            </span>
+          )}
 
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-            calendarDateRange.start
-              ? 'border-accent-500 bg-accent-50/50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 font-bold'
-              : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Calendar size={14} />
-          <span>
-            {calendarDateRange.start
-              ? `${calendarDateRange.start}${calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start ? ` to ${calendarDateRange.end}` : ''}`
-              : 'Pick Date Range'}
-          </span>
-        </button>
-
-        {(selectedDayOfWeek !== 'ALL' || calendarDateRange.start) && (
           <button
             type="button"
-            onClick={onReset}
-            className="px-2 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+            onClick={() => setIsOpen(!isOpen)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+              calendarDateRange.start
+                ? 'border-accent-500 bg-accent-50/50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 font-bold'
+                : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
+            }`}
           >
-            Reset
+            <Calendar size={14} />
+            <span>
+              {calendarDateRange.start
+                ? `${calendarDateRange.start}${calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start ? ` to ${calendarDateRange.end}` : ''}`
+                : 'Pick Date Range'}
+            </span>
           </button>
-        )}
 
-        {/* Popover Calendar Picker */}
-        {isOpen && (
-          <div className="absolute right-0 top-full mt-2 z-50">
-            <AuditCalendarPicker
-              startDate={calendarDateRange.start}
-              endDate={calendarDateRange.end}
-              isOpen={isOpen}
-              onClose={() => setIsOpen(false)}
-              onSelectRange={(start, end) => {
-                onSelectDateRange({ start, end });
-                onSelectDayOfWeek('ALL');
-                setIsOpen(false);
-              }}
-            />
+          {(selectedDayOfWeek !== 'ALL' || calendarDateRange.start) && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="px-2 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+            >
+              Reset
+            </button>
+          )}
+
+          {/* Popover Calendar Picker */}
+          {isOpen && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <AuditCalendarPicker
+                startDate={calendarDateRange.start}
+                endDate={calendarDateRange.end}
+                isOpen={isOpen}
+                onClose={() => setIsOpen(false)}
+                onSelectRange={(start, end) => {
+                  onSelectDateRange({ start, end });
+                  onSelectDayOfWeek('ALL');
+                  setIsOpen(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {extraRight && (
+          <div className="flex items-center">
+            {extraRight}
           </div>
         )}
       </div>
@@ -527,6 +538,8 @@ export default function VanStockManagement() {
   const getKpis = useVanStockStore((s) => s.getKpis);
   const getRestockRequirements = useVanStockStore((s) => s.getRestockRequirements);
   const resolveDamagedRecord = useVanStockStore((s) => s.resolveDamagedRecord);
+  const undoDamagedRecord = useVanStockStore((s) => s.undoDamagedRecord);
+  const reverseMovement = useVanStockStore((s) => s.reverseMovement);
   const dispatchDailyManifest = useVanStockStore((s) => s.dispatchDailyManifest);
   const reDispatchManifest = useVanStockStore((s) => s.reDispatchManifest);
   const fetchInitialData = useVanStockStore((s) => s.fetchInitialData);
@@ -567,6 +580,38 @@ export default function VanStockManagement() {
   const [signingModalRole, setSigningModalRole] = useState(null); // 'owner' | 'rep' | null
   const [useSavedOwnerSig, setUseSavedOwnerSig] = useState(false);
   const [useSavedRepSig, setUseSavedRepSig] = useState(false);
+
+  // Themed confirmation dialog state (replaces native browser window.confirm)
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    variant: 'warning', // 'warning' | 'danger' | 'primary' | 'info'
+    onConfirm: null,
+  });
+
+  const closeConfirmDialog = () => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const handleRequestReverseMovement = (m, label) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reverse Stock Movement',
+      message: `Reverse transaction #${m.id} (${label}) for ${m.quantity} units of "${m.productName}"?\n\nThis will restore ${m.quantity} unit(s) to ${m.sourceLocation || 'origin'} and deduct from ${m.targetLocation || 'destination'}.`,
+      confirmLabel: 'Yes, Reverse Movement',
+      variant: 'warning',
+      onConfirm: async () => {
+        try {
+          await reverseMovement(m.id);
+          toast.success(`Movement #${m.id} reversed successfully.`);
+        } catch (err) {
+          toast.error(err.message || 'Failed to reverse movement');
+        }
+      },
+    });
+  };
 
   // Local filtering & date states
   const [searchQuery, setSearchQuery] = useState('');
@@ -776,21 +821,16 @@ export default function VanStockManagement() {
   // Computed KPIs
   const kpis = getKpis();
 
-  // Master categories list for SearchableSelect
+  // Master categories list for SearchableSelect strictly from live DB
   const categoryOptions = useMemo(() => {
-    const set = new Set();
+    const list = [{ value: 'ALL', label: 'All Categories' }];
     if (categories && categories.length > 0) {
       categories.forEach((c) => {
-        if (c.name) set.add(c.name);
+        if (c.name) list.push({ value: c.name, label: c.name });
       });
     }
-    products.forEach((p) => {
-      if (p.category) set.add(p.category);
-    });
-    const list = [{ value: 'ALL', label: 'All Categories' }];
-    set.forEach((cat) => list.push({ value: cat, label: cat }));
     return list;
-  }, [categories, products]);
+  }, [categories]);
 
   // Van Approval Status options
   const vanApprovalOptions = [
@@ -818,7 +858,7 @@ export default function VanStockManagement() {
   // Movement Types options with Simple English labels
   const movementTypeOptions = [
     { value: 'ALL', label: 'All Movements' },
-    { value: 'VEHICLE_SALES_OUTBOUND', label: 'Van Sale' },
+    { value: 'VEHICLE_SALES_OUTBOUND', label: 'Road Sale' },
     { value: 'STORE_TO_VEHICLE_LOAD', label: 'Loaded to Van' },
     { value: 'VEHICLE_TO_STORE_RETURN', label: 'Returned to Store' },
     { value: 'RETURN_TO_DAMAGED_POOL', label: 'Damaged Item' },
@@ -842,8 +882,13 @@ export default function VanStockManagement() {
         item.sku.toLowerCase().includes(q);
 
       const product = products.find((p) => p.id === item.productId);
+      const liveCategories = new Set(categories.map((c) => c.name).filter(Boolean));
+      const productCategory =
+        product?.category && liveCategories.has(product.category)
+          ? product.category
+          : 'Uncategorized';
       const matchCategory =
-        categoryFilter === 'ALL' || (product && product.category === categoryFilter);
+        categoryFilter === 'ALL' || productCategory === categoryFilter;
 
       const matchApproval =
         vanApprovalFilter === 'ALL' || item.status === vanApprovalFilter;
@@ -858,7 +903,7 @@ export default function VanStockManagement() {
 
       return matchSearch && matchCategory && matchApproval;
     });
-  }, [vanStock, products, searchQuery, categoryFilter, vanApprovalFilter, isViewingPastDate, activeOperatingDate, stockMovements]);
+  }, [vanStock, products, categories, searchQuery, categoryFilter, vanApprovalFilter, isViewingPastDate, activeOperatingDate, stockMovements]);
 
   // Active vs Resolved Damaged Goods Lists
   const activeDamagedGoodsList = useMemo(() => {
@@ -894,10 +939,8 @@ export default function VanStockManagement() {
       const matchStatus =
         defectStatusFilter === 'ALL' || item.status === defectStatusFilter;
 
-      // Correlate date filter to either defect report date or original vehicle load date
-      const targetDate = damageDateFilterMode === 'LOAD_DATE'
-        ? deriveItemLoadDate(item)
-        : item.createdAt;
+      // The date filter for this tab must ONLY filter by the date the damage was logged (createdAt)
+      const targetDate = item.createdAt;
 
       // Date matching against calendar date range and day of week
       let matchDate = true;
@@ -1128,7 +1171,7 @@ export default function VanStockManagement() {
   const handleReDispatch = async () => {
     const result = await reDispatchManifest({
       dispatcherName: 'W. Liyanage (Managing Director / Owner)',
-      notes: `Updated manifest re-dispatched to ${vehicle.id} after quantity reconciliation`,
+      notes: 'Updated manifest re-dispatched to Van after quantity reconciliation',
     });
     const manifestNo =
       result?.manifest?.manifestNo ||
@@ -1141,7 +1184,7 @@ export default function VanStockManagement() {
   const handleDispatchDailyManifest = () => {
     dispatchDailyManifest({
       dispatcherName: 'W. Liyanage (Managing Director / Owner)',
-      notes: `Daily load manifest locked and dispatched to ${vehicle.id}`,
+      notes: 'Daily load manifest locked and dispatched to Van',
     });
     toast.success('Daily Stock Manifest finalized and dispatched. Owner signature locked in.');
   };
@@ -1446,12 +1489,12 @@ export default function VanStockManagement() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setModalPrintOpen(true)}
+            onClick={activeTab === 'damaged' ? () => setModalDamageReportOpen(true) : () => setModalPrintOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
-            title="Print Daily Load Manifest (A4)"
+            title={activeTab === 'damaged' ? 'Print Damaged Goods Audit Report (A4)' : 'Print Daily Load Manifest (A4)'}
           >
             <Printer size={15} />
-            <span>Print</span>
+            <span>{activeTab === 'damaged' ? 'Print Damage Report' : 'Print Stock Sheet'}</span>
           </button>
         </div>
       </div>
@@ -1563,15 +1606,15 @@ export default function VanStockManagement() {
           })}
         </div>
 
-        {/* Compact Field Operations Action Buttons */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Compact Field Operations Action Buttons — horizontally scrollable on mobile */}
+        <div className="flex flex-nowrap overflow-x-auto whitespace-nowrap scrollbar-hide gap-2 pb-2 snap-x">
           <button
             type="button"
             onClick={() => {
               setTargetProductId(null);
               setModalLoadOpen(true);
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-accent-600 hover:bg-accent-700 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-accent-600 hover:bg-accent-700 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
           >
             <ListPlus size={14} />
             <span>Load Van Stock</span>
@@ -1580,7 +1623,7 @@ export default function VanStockManagement() {
           <button
             type="button"
             onClick={() => handleOpenSalesModal(null)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
           >
             <Receipt size={13} />
             <span>Record Road Sale</span>
@@ -1589,7 +1632,7 @@ export default function VanStockManagement() {
           <button
             type="button"
             onClick={() => handleOpenDamagedModal(null)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 transition-all cursor-pointer shadow-sm whitespace-nowrap"
           >
             <AlertTriangle size={13} />
             <span>Damage</span>
@@ -1598,28 +1641,16 @@ export default function VanStockManagement() {
           <button
             type="button"
             onClick={() => handleOpenReturnModal(null)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm whitespace-nowrap"
           >
             <RotateCcw size={13} />
             <span>Return to Store</span>
           </button>
 
-          {activeTab === 'damaged' && (
-            <button
-              type="button"
-              onClick={() => setModalDamageReportOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
-              title="Print Damaged Goods Audit Report (A4)"
-            >
-              <Printer size={13} />
-              <span>Print Damage</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={() => navigate('/warehouse')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50 transition-all cursor-pointer whitespace-nowrap"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50 transition-all cursor-pointer whitespace-nowrap"
           >
             <Warehouse size={13} />
             <span>Warehouse &rarr;</span>
@@ -1630,8 +1661,9 @@ export default function VanStockManagement() {
       {/* -------------------------------------------------------------
           5. CONTEXTUAL FILTER ENGINE (Universal SearchableSelect & DateBar)
          ------------------------------------------------------------- */}
-      <div className="space-y-3">
-        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-3">
+        {/* Row 1: Search + Category/Status Comboboxes */}
+        <div className="flex flex-wrap gap-2">
           {/* Search Box */}
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-400" />
@@ -1645,68 +1677,60 @@ export default function VanStockManagement() {
           </div>
 
           {/* Contextual SearchableSelect Dropdowns */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Category Filter for On-Hand */}
-            {activeTab === 'on-hand' && (
-              <div className="w-48 sm:w-56">
-                <SearchableSelect
-                  value={categoryFilter}
-                  onChange={setCategoryFilter}
-                  options={categoryOptions}
-                  placeholder="Category"
-                  size="sm"
-                  icon={Filter}
-                  portal
-                />
-              </div>
-            )}
-
-            {/* Approval Status Filter on On-Hand */}
-            {activeTab === 'on-hand' && (
-              <div className="w-48 sm:w-52">
-                <SearchableSelect
-                  value={vanApprovalFilter}
-                  onChange={setVanApprovalFilter}
-                  options={vanApprovalOptions}
-                  placeholder="Verification Status"
-                  size="sm"
-                  portal
-                />
-              </div>
-            )}
-
-            {/* Defect Status Filter on Damaged tab */}
-            {activeTab === 'damaged' && (
-              <div className="w-48 sm:w-52">
-                <SearchableSelect
-                  value={defectStatusFilter}
-                  onChange={setDefectStatusFilter}
-                  options={defectStatusOptions}
-                  placeholder="Defect Status"
-                  size="sm"
-                  portal
-                />
-              </div>
-            )}
-
-            {/* Movement Type Filter on Movements tab */}
-            {activeTab === 'movements' && (
-              <div className="w-48 sm:w-56">
-                <SearchableSelect
-                  value={movementTypeFilter}
-                  onChange={setMovementTypeFilter}
-                  options={movementTypeOptions}
-                  placeholder="Movement Type"
-                  size="sm"
-                  portal
-                />
-              </div>
-            )}
-          </div>
+          {activeTab === 'on-hand' && (
+            <div className="w-48 sm:w-56">
+              <SearchableSelect
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                options={categoryOptions}
+                placeholder={categoryOptions.length <= 1 ? "No categories available" : "Category"}
+                emptyMessage="No categories available"
+                size="sm"
+                icon={Filter}
+                portal
+              />
+            </div>
+          )}
+          {activeTab === 'on-hand' && (
+            <div className="w-48 sm:w-52">
+              <SearchableSelect
+                value={vanApprovalFilter}
+                onChange={setVanApprovalFilter}
+                options={vanApprovalOptions}
+                placeholder="Verification Status"
+                size="sm"
+                portal
+              />
+            </div>
+          )}
+          {activeTab === 'damaged' && (
+            <div className="w-48 sm:w-52">
+              <SearchableSelect
+                value={defectStatusFilter}
+                onChange={setDefectStatusFilter}
+                options={defectStatusOptions}
+                placeholder="Defect Status"
+                size="sm"
+                portal
+              />
+            </div>
+          )}
+          {activeTab === 'movements' && (
+            <div className="w-48 sm:w-56">
+              <SearchableSelect
+                value={movementTypeFilter}
+                onChange={setMovementTypeFilter}
+                options={movementTypeOptions}
+                placeholder="Movement Type"
+                size="sm"
+                portal
+              />
+            </div>
+          )}
         </div>
 
-        {/* Unified Day of Week Pills & Shadcn Calendar Date Filter Bar */}
-        {(activeTab === 'on-hand' || activeTab === 'damaged') && (
+        {/* Row 2: Day pills + Date picker + View Mode Toggle */}
+        <div className="flex flex-wrap gap-2 items-center">
           <UnifiedDayPillsCalendarFilter
             selectedDayOfWeek={selectedDayOfWeek}
             onSelectDayOfWeek={handleSelectDayOfWeek}
@@ -1716,10 +1740,57 @@ export default function VanStockManagement() {
               setSelectedDayOfWeek('ALL');
             }}
             onReset={handleResetAuditDateFilters}
-            label={activeTab === 'on-hand' ? `Operating Date (${activeOperatingDate})` : 'Quarantine Date'}
-            resultCount={activeTab === 'on-hand' ? filteredVanStock.length : filteredDamagedGoods.length}
+            label={
+              activeTab === 'on-hand'
+                ? `Operating Date (${activeOperatingDate})`
+                : activeTab === 'damaged'
+                ? 'Quarantine Date'
+                : 'Audit Date Filter'
+            }
+            resultCount={
+              activeTab === 'on-hand'
+                ? filteredVanStock.length
+                : activeTab === 'damaged'
+                ? filteredDamagedGoods.length
+                : filteredMovements.length
+            }
+            extraRight={
+              activeTab === 'damaged' ? (
+                <div className="inline-flex rounded-xl border border-gray-200 dark:border-slate-700 p-0.5 bg-slate-100 dark:bg-slate-900 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResolvedHistory(false);
+                      setDefectStatusFilter('ALL');
+                    }}
+                    className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      !showResolvedHistory
+                        ? 'bg-rose-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Active Quarantine ({activeDamagedGoodsList.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResolvedHistory(true);
+                      setDefectStatusFilter('ALL');
+                    }}
+                    className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      showResolvedHistory
+                        ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="View items resolved via Vendor Return or Scrap Write-Off"
+                  >
+                    Show Resolved / History ({resolvedDamagedGoodsList.length})
+                  </button>
+                </div>
+              ) : null
+            }
           />
-        )}
+        </div>
       </div>
 
       {/* -------------------------------------------------------------
@@ -1970,6 +2041,7 @@ export default function VanStockManagement() {
                           {/* Morning Checkbox */}
                           <td className="py-3 px-3 text-center">
                             <input
+                              id={`morning-check-${item.id}`}
                               type="checkbox"
                               checked={isMorningChecked}
                               onChange={() => handleToggleCheck(item)}
@@ -1981,6 +2053,7 @@ export default function VanStockManagement() {
                           {/* Evening Reconciliation Checkbox */}
                           <td className="py-3 px-3 text-center">
                             <input
+                              id={`evening-check-${item.id}`}
                               type="checkbox"
                               checked={isEveningChecked}
                               onChange={() => handleToggleEveningReconciled(item)}
@@ -2001,7 +2074,9 @@ export default function VanStockManagement() {
                           </td>
 
                           <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                            {product?.category || 'General'}
+                            {product?.category && categories?.some((c) => c.name === product.category)
+                              ? product.category
+                              : 'Uncategorized'}
                           </td>
 
                           <td className="py-3 px-3 text-center text-slate-500 dark:text-slate-300">
@@ -2136,8 +2211,9 @@ export default function VanStockManagement() {
 
                         {/* Dual Checkboxes for Mobile */}
                         <div className="flex items-center gap-3 flex-shrink-0">
-                          <label className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                          <label htmlFor={`mobile-morning-check-${item.id}`} className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                             <input
+                              id={`mobile-morning-check-${item.id}`}
                               type="checkbox"
                               checked={isMorningChecked}
                               onChange={() => handleToggleCheck(item)}
@@ -2146,8 +2222,9 @@ export default function VanStockManagement() {
                             <Sun size={11} className="text-emerald-600" />
                           </label>
 
-                          <label className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                          <label htmlFor={`mobile-evening-check-${item.id}`} className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                             <input
+                              id={`mobile-evening-check-${item.id}`}
                               type="checkbox"
                               checked={isEveningChecked}
                               onChange={() => handleToggleEveningReconciled(item)}
@@ -2237,81 +2314,6 @@ export default function VanStockManagement() {
          ------------------------------------------------------------- */}
       {activeTab === 'damaged' && (
         <div className="space-y-4">
-          {/* Sub-Header: Active vs Resolved History Mode & Date Correlation */}
-          <div className="flex items-center justify-between gap-3 flex-wrap bg-white dark:bg-slate-800 p-3 sm:px-4 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm text-xs">
-            {/* View Mode Toggle: Active vs Resolved History */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">Quarantine View:</span>
-              <div className="inline-flex rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-900">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowResolvedHistory(false);
-                    setDefectStatusFilter('ALL');
-                  }}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    !showResolvedHistory
-                      ? 'bg-rose-600 text-white shadow-xs font-bold'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                  }`}
-                >
-                  Active Quarantine ({activeDamagedGoodsList.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowResolvedHistory(true);
-                    setDefectStatusFilter('ALL');
-                  }}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    showResolvedHistory
-                      ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs font-bold'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                  }`}
-                  title="View items resolved via Vendor Return or Scrap Write-Off"
-                >
-                  Show Resolved / History ({resolvedDamagedGoodsList.length})
-                </button>
-              </div>
-            </div>
-
-            {/* Date Correlation Mode Selector */}
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">Filter Date By:</span>
-              <div className="inline-flex rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-900">
-                <button
-                  type="button"
-                  onClick={() => setDamageDateFilterMode('LOGGED')}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    damageDateFilterMode === 'LOGGED'
-                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                  }`}
-                >
-                  Date Logged
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDamageDateFilterMode('LOAD_DATE')}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    damageDateFilterMode === 'LOAD_DATE'
-                      ? 'bg-rose-600 text-white shadow-xs font-bold'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                  }`}
-                  title="Correlate defects by the date the batch was originally loaded on the vehicle"
-                >
-                  Original Load Date
-                </button>
-              </div>
-            </div>
-            {damageDateFilterMode === 'LOAD_DATE' && (
-              <span className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                <span>Correlated to loading batch:</span>
-                <strong className="font-semibold">{datePreset}</strong>
-              </span>
-            )}
-          </div>
-
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
             {filteredDamagedGoods.length === 0 ? (
               <div className="py-14 text-center text-slate-400 text-xs">
@@ -2326,105 +2328,160 @@ export default function VanStockManagement() {
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100 dark:divide-slate-700/60">
-                {filteredDamagedGoods.map((item) => (
-                <div key={item.id} className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
-                        {item.sku}
-                      </span>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        {item.productName}
-                      </h3>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          item.status === 'WRITTEN_OFF'
-                            ? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-300'
-                            : item.status === 'VENDOR_RETURN'
-                            ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300'
-                            : item.status === 'INSPECTED'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300'
-                        }`}
-                      >
-                        {item.status}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-rose-700 dark:text-rose-300 font-medium mt-1">
-                      Reason: {item.reason}
-                    </p>
-
-                    <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 dark:text-slate-300 flex-wrap">
-                      <span>Defective Qty: <strong className="text-slate-900 dark:text-white">{item.quantity} {item.unit}</strong></span>
-                      <span>Total Loss: <strong className="text-rose-600 dark:text-rose-400 font-mono">{formatLKR(item.totalValue)}</strong></span>
-                      <span>
-                        Original Load Date:{' '}
-                        <strong className="text-slate-900 dark:text-white font-mono">
-                          {item.loadDate
-                            ? formatDateYYYYMMDD(item.loadDate)
-                            : deriveItemLoadDate(item)}
-                        </strong>
-                      </span>
-                      {(item.manifestNo || item.sourceManifestNo) && (
-                        <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60">
-                          Manifest: {item.manifestNo || item.sourceManifestNo}
-                        </span>
-                      )}
-                      {item.sourceInvoiceNo && <span>Invoice: <strong>{item.sourceInvoiceNo}</strong></span>}
-                      <span>Reported By: <strong>{item.reportedBy}</strong></span>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        Logged: {formatDateYYYYMMDD(item.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {item.status === 'WRITTEN_OFF' || item.status === 'VENDOR_RETURN' ? (
-                      /* Resolved status indicator: archived from active quarantine ledger */
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Archived / Resolved
-                      </span>
-                    ) : (
-                      /* Active quarantine actions: resolve as write-off or vendor return */
-                      <>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await resolveDamagedRecord(item.id, 'WRITTEN_OFF', 'Scrap write-off approved');
-                              toast.success(`SKU ${item.sku} written off as scrap.`);
-                            } catch (err) {
-                              toast.error(err.message || 'Failed to update damaged item status');
-                            }
-                          }}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                        >
-                          Write-Off
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await resolveDamagedRecord(item.id, 'VENDOR_RETURN', 'Dispatched to supplier');
-                              toast.success(`SKU ${item.sku} dispatched for vendor return.`);
-                            } catch (err) {
-                              toast.error(err.message || 'Failed to update damaged item status');
-                            }
-                          }}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
-                        >
-                          Vendor Return
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-300 tracking-wider">
+                      <th className="py-3 px-3">ID</th>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-4">Name</th>
+                      <th className="py-3 px-3 text-right">Price</th>
+                      <th className="py-3 px-3 text-right">Qty</th>
+                      <th className="py-3 px-4 text-right">Total</th>
+                      <th className="py-3 px-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                    {filteredDamagedGoods.map((item) => {
+                      const price = item.unitPrice || item.basePrice || 0;
+                      const total = item.totalValue || (price * item.quantity);
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                            #{item.id}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                            {formatDateYYYYMMDD(item.createdAt)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
+                                {item.sku}
+                              </span>
+                              <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
+                                {item.productName}
+                              </span>
+                            </div>
+                            {item.reason && (
+                              <span className="text-[10px] text-rose-600 dark:text-rose-400 block truncate mt-0.5">
+                                Reason: {item.reason}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {formatLKR(price)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                            {item.quantity} {item.unit || ''}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                            {formatLKR(total)}
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            {item.status === 'WRITTEN_OFF' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                                Written Off
+                              </span>
+                            ) : item.status === 'VENDOR_RETURN' ? (
+                              <div className="inline-flex items-center gap-1.5 justify-center">
+                                <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800">
+                                  Vendor Return
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmDialog({
+                                      isOpen: true,
+                                      title: 'Revert to Damaged Quarantine',
+                                      message: `Move SKU "${item.sku}" (${item.productName}) from Vendor Return back to active Damaged Quarantine?`,
+                                      confirmLabel: 'Yes, Re-Damage',
+                                      variant: 'warning',
+                                      onConfirm: async () => {
+                                        try {
+                                          await resolveDamagedRecord(item.id, 'LOGGED', 'Reverted from Vendor Return to active Damaged pool');
+                                          toast.success(`SKU ${item.sku} restored to active damaged goods.`);
+                                        } catch (err) {
+                                          toast.error(err.message || 'Failed to revert damaged item');
+                                        }
+                                      },
+                                    });
+                                  }}
+                                  className="p-1 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 transition-colors cursor-pointer"
+                                  title="Re-Damage: Return to active damaged goods pool"
+                                >
+                                  <RotateCcw size={12} />
+                                </button>
+                              </div>
+                            ) : (
+                              <DropdownMenu className="relative inline-block text-left">
+                                <DropdownMenuTrigger
+                                  className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                                  title="Actions"
+                                >
+                                  <MoreVertical size={14} />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  width="w-48 min-w-[160px]"
+                                  className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-xl z-50 py-1"
+                                >
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setConfirmDialog({
+                                        isOpen: true,
+                                        title: 'Confirm Vendor Return',
+                                        message: `Mark SKU "${item.sku}" (${item.productName}) [${item.quantity} ${item.unit || 'units'}] as Vendor Return dispatched to supplier?`,
+                                        confirmLabel: 'Yes, Mark Vendor Return',
+                                        variant: 'primary',
+                                        onConfirm: async () => {
+                                          try {
+                                            await resolveDamagedRecord(item.id, 'VENDOR_RETURN', 'Dispatched to supplier for warranty replacement');
+                                            toast.success(`SKU ${item.sku} marked as Vendor Return.`);
+                                          } catch (err) {
+                                            toast.error(err.message || 'Failed to update damaged item status');
+                                          }
+                                        },
+                                      });
+                                    }}
+                                    className="w-full flex flex-row items-center justify-start gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/70 whitespace-nowrap transition-colors cursor-pointer"
+                                  >
+                                    <RotateCcw size={14} className="shrink-0 text-indigo-600 dark:text-indigo-400" />
+                                    <span>Vendor Return</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setConfirmDialog({
+                                        isOpen: true,
+                                        title: 'Restore Defective Stock',
+                                        message: `Restore ${item.quantity} ${item.unit || 'unit(s)'} of SKU "${item.sku}" (${item.productName}) into Central Warehouse inventory?`,
+                                        confirmLabel: 'Yes, Restore to Warehouse',
+                                        variant: 'info',
+                                        onConfirm: async () => {
+                                          try {
+                                            await undoDamagedRecord(item.id);
+                                            toast.success(`Damage entry #${item.id} reversed. Restored to Central Warehouse.`);
+                                          } catch (err) {
+                                            toast.error(err.message || 'Failed to undo damage record');
+                                          }
+                                        },
+                                      });
+                                    }}
+                                    className="w-full flex flex-row items-center justify-start gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/70 whitespace-nowrap transition-colors cursor-pointer"
+                                  >
+                                    <ArrowRightLeft size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                    <span>Restore Stock</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2432,85 +2489,8 @@ export default function VanStockManagement() {
       {/* 4. TRANSACTIONAL AUDIT MOVEMENT LEDGER (AUDIT HISTORY) */}
       {activeTab === 'movements' && (
         <div className="space-y-3">
-          {/* Day of Week & Calendar Date Filter Bar */}
-          <UnifiedDayPillsCalendarFilter
-            selectedDayOfWeek={selectedDayOfWeek}
-            onSelectDayOfWeek={handleSelectDayOfWeek}
-            calendarDateRange={calendarDateRange}
-            onSelectDateRange={(range) => {
-              setCalendarDateRange(range);
-              setSelectedDayOfWeek('ALL');
-            }}
-            onReset={handleResetAuditDateFilters}
-            label="Audit Date Filter"
-            resultCount={filteredMovements.length}
-          />
-
-          {/* Item-Wise Total Summary Bar */}
-          {movementItemTotals.length > 0 && (
-            <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <PackageCheck size={14} className="text-accent-600" />
-                  Item-Wise Movement Totals ({movementItemTotals.length} Products Moved)
-                </span>
-                <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-400">
-                  {movementItemTotals.reduce((sum, item) => sum + item.totalUnits, 0)} Total Units / {filteredMovements.length} Transactions
-                </span>
-              </div>
-
-              {/* Product Pills / Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 pt-1 max-h-48 overflow-y-auto">
-                {movementItemTotals.map((item) => (
-                  <div
-                    key={item.productId || item.sku}
-                    className="p-2 rounded-xl border border-gray-100 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-900/50 flex flex-col justify-between text-xs space-y-1"
-                  >
-                    <div className="flex items-start justify-between gap-1">
-                      <div className="min-w-0">
-                        <span className="font-mono text-[9px] font-bold text-slate-400">{item.sku}</span>
-                        <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{item.productName}</p>
-                      </div>
-                      <span className="font-mono font-black text-xs text-accent-700 dark:text-accent-300 flex-shrink-0">
-                        {item.totalUnits} units
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1 flex-wrap text-[10px]">
-                      {item.vanSales > 0 && (
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-medium">
-                          Sale: {item.vanSales}
-                        </span>
-                      )}
-                      {item.loaded > 0 && (
-                        <span className="px-1.5 py-0.2 rounded bg-accent-100 text-accent-800 dark:bg-accent-950/60 dark:text-accent-300 font-medium">
-                          Loaded: {item.loaded}
-                        </span>
-                      )}
-                      {item.returned > 0 && (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-medium">
-                          Returned: {item.returned}
-                        </span>
-                      )}
-                      {item.damaged > 0 && (
-                        <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 font-medium">
-                          Damaged: {item.damaged}
-                        </span>
-                      )}
-                      {item.received > 0 && (
-                        <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium">
-                          Received: {item.received}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Movements Table / Cards */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
             {filteredMovements.length === 0 ? (
               <div className="py-14 text-center text-slate-400 text-xs">
                 <ArrowRightLeft className="w-12 h-12 mx-auto mb-2 opacity-30" />
@@ -2523,41 +2503,78 @@ export default function VanStockManagement() {
                   <table className="w-full border-collapse text-left text-xs">
                     <thead>
                       <tr className="border-b border-gray-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-300 tracking-wider">
-                        <th className="py-3 px-4">Timestamp</th>
-                        <th className="py-3 px-4">Movement Type</th>
-                        <th className="py-3 px-4">Item / SKU</th>
-                        <th className="py-3 px-3 text-center">Qty</th>
-                        <th className="py-3 px-4">Source &rarr; Target</th>
+                        <th className="py-3 px-3">Date</th>
+                        <th className="py-3 px-4">ID / Name</th>
+                        <th className="py-3 px-3">Movement Type</th>
+                        <th className="py-3 px-3 text-right">Price</th>
+                        <th className="py-3 px-3 text-right">Qty</th>
+                        <th className="py-3 px-4 text-right">Total</th>
+                        <th className="py-3 px-3 text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
                       {filteredMovements.map((m) => {
                         const { label, badge } = getHumanMovementLabel(m.movementType);
+                        const product = products.find((p) => p.id === m.productId);
+                        const price = m.unitPrice || m.price || product?.basePrice || 0;
+                        const total = (Number(m.quantity) || 0) * price;
+                        const dateStr = m.isGrouped
+                          ? `${m.groupedDate} (Daily Total)`
+                          : formatDateYYYYMMDD(m.timestamp || m.createdAt);
+                        const isAlreadyReversed = stockMovements.some((other) => other.reference === `REV-MOV-${m.id}`);
+                        const isReversalEntry = String(m.reference || '').startsWith('REV-MOV-');
+                        const canReverse = !m.isGrouped && typeof m.id === 'number' && !isReversalEntry && !isAlreadyReversed;
+
                         return (
                           <tr key={m.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
-                            <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                              {m.isGrouped ? (
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                  {m.groupedDate} (Daily Total)
-                                </span>
-                              ) : (
-                                formatMovementTimestamp(m.timestamp || m.createdAt)
-                              )}
+                            <td className="py-3 px-3 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {dateStr}
                             </td>
                             <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/60">
+                                  {m.sku || `#${m.productId || '-'}`}
+                                </span>
+                                <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
+                                  {m.productName}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${badge}`}>
                                 {m.isGrouped ? 'Consolidated Road Sale' : label}
                               </span>
                             </td>
-                            <td className="py-3 px-4">
-                              <span className="font-bold text-slate-900 dark:text-white block">{m.productName}</span>
-                              <span className="text-[10px] font-mono text-slate-400">{m.sku}</span>
+                            <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              {formatLKR(price)}
                             </td>
-                            <td className="py-3 px-3 text-center font-bold font-mono text-slate-900 dark:text-white">
+                            <td className="py-3 px-3 text-right font-bold font-mono text-slate-900 dark:text-white whitespace-nowrap">
                               {m.quantity}
                             </td>
-                            <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
-                              {m.sourceLocation} &rarr; {m.targetLocation}
+                            <td className="py-3 px-4 text-right font-mono font-bold text-accent-700 dark:text-accent-300 whitespace-nowrap">
+                              {formatLKR(total)}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {isReversalEntry ? (
+                                <span className="inline-block px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                                  Reversal
+                                </span>
+                              ) : isAlreadyReversed ? (
+                                <span className="inline-block px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                                  Reversed
+                                </span>
+                              ) : canReverse ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRequestReverseMovement(m, label)}
+                                  className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-700 text-slate-500 hover:text-amber-600 hover:border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                                  title="Reverse / Return Movement"
+                                >
+                                  <RotateCcw size={13} />
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-mono">-</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -2570,6 +2587,16 @@ export default function VanStockManagement() {
                 <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-700/60">
                   {filteredMovements.map((m) => {
                     const { label, badge } = getHumanMovementLabel(m.movementType);
+                    const product = products.find((p) => p.id === m.productId);
+                    const price = m.unitPrice || m.price || product?.basePrice || 0;
+                    const total = (Number(m.quantity) || 0) * price;
+                    const dateStr = m.isGrouped
+                      ? m.groupedDate
+                      : formatDateYYYYMMDD(m.timestamp || m.createdAt);
+                    const isAlreadyReversed = stockMovements.some((other) => other.reference === `REV-MOV-${m.id}`);
+                    const isReversalEntry = String(m.reference || '').startsWith('REV-MOV-');
+                    const canReverse = !m.isGrouped && typeof m.id === 'number' && !isReversalEntry && !isAlreadyReversed;
+
                     return (
                       <div key={m.id} className="p-3.5 space-y-2 text-xs">
                         <div className="flex items-start justify-between gap-2">
@@ -2577,25 +2604,43 @@ export default function VanStockManagement() {
                             {m.isGrouped ? 'Consolidated Road Sale' : label}
                           </span>
                           <span className="font-mono text-[10px] text-slate-400">
-                            {m.isGrouped ? m.groupedDate : formatMovementTimestamp(m.timestamp || m.createdAt)}
+                            {dateStr}
                           </span>
                         </div>
 
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-bold text-slate-900 dark:text-white truncate">{m.productName}</p>
-                            <p className="font-mono text-[10px] text-slate-400">{m.sku}</p>
+                            <p className="font-mono text-[10px] text-slate-400">{m.sku || `#${m.productId || '-'}`}</p>
                           </div>
-                          <span className="font-mono font-bold text-sm text-slate-900 dark:text-white flex-shrink-0">
-                            {m.quantity} units
+                          <span className="font-bold font-mono text-xs text-slate-900 dark:text-white whitespace-nowrap">
+                            {m.quantity} Units
                           </span>
                         </div>
 
                         <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-gray-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 font-mono">
-                          <span>{m.sourceLocation} &rarr; {m.targetLocation}</span>
-                          {m.isGrouped && (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[10px]">Daily Consolidation</span>
-                          )}
+                          <span>Price: {formatLKR(price)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-accent-700 dark:text-accent-300">Total: {formatLKR(total)}</span>
+                            {isReversalEntry ? (
+                              <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-slate-100 text-slate-500">
+                                Reversal
+                              </span>
+                            ) : isAlreadyReversed ? (
+                              <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                Reversed
+                              </span>
+                            ) : canReverse ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRequestReverseMovement(m, label)}
+                                className="p-1 rounded-md border border-gray-200 dark:border-slate-700 text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer"
+                                title="Reverse / Return Movement"
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     );
@@ -2694,6 +2739,17 @@ export default function VanStockManagement() {
         manifestNo={activeManifest?.manifestNo || dailyManifest?.manifestNo || `MAN-${activeOperatingDate.replace(/-/g, '')}-01`}
         uncheckedCount={filteredVanStock.filter((i) => !isItemCheckedMorning(i)).length}
         totalCount={filteredVanStock.length}
+      />
+
+      {/* Themed Action Confirmation Modal */}
+      <ConfirmActionModal
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirmDialog}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
       />
     </VanStockLayout>
   );

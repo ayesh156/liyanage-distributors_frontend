@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Receipt, Trash2, AlertCircle, ShoppingCart, FileText, Store } from 'lucide-react';
+import { X, Receipt, Trash2, AlertCircle, ShoppingCart, FileText, Store, ChevronsUp } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Combobox from '@/components/ui/combobox';
 import useVanStockStore from '../../hooks/useVanStockStore';
@@ -208,7 +208,7 @@ export default function VehicleSalesModal({
                 Record Road Sales Invoice
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Direct Outbound Deduction from {vehicle.id} ({vehicle.plateNumber})
+                Direct Outbound Deduction from Van
               </p>
             </div>
           </div>
@@ -329,6 +329,15 @@ export default function VehicleSalesModal({
                           onChange={(e) => handleUpdateQty(item.productId, e.target.value)}
                           className="w-16 px-2 py-1 text-center font-bold text-xs rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                         />
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQty(item.productId, item.maxQty)}
+                          disabled={item.maxQty <= 0}
+                          className="p-1 rounded-lg border border-gray-200 dark:border-slate-700 text-slate-500 hover:text-accent-600 hover:border-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/40 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          title="Fill all available qty"
+                        >
+                          <ChevronsUp size={14} />
+                        </button>
                       </div>
 
                       <span className="font-mono font-bold text-slate-900 dark:text-white w-24 text-right">

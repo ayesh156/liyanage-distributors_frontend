@@ -200,7 +200,7 @@ async function request(endpoint, options = {}) {
         if (!shouldSuppressAuthToast()) {
           showToast(errMsg);
         }
-      } else if (!isGatewayOffline) {
+      } else if (!isGatewayOffline && !options?.suppressToast) {
         showToast(errMsg);
       }
 
@@ -252,9 +252,9 @@ const api = {
     ).toString() : '';
     return request(`${endpoint}${query}`, { method: 'GET' });
   },
-  post:   (endpoint, body) => request(endpoint, { method: 'POST', body: JSON.stringify(body) }),
-  put:    (endpoint, body) => request(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: (endpoint) => request(endpoint, { method: 'DELETE' }),
+  post:   (endpoint, body, options = {}) => request(endpoint, { method: 'POST', body: JSON.stringify(body), ...options }),
+  put:    (endpoint, body, options = {}) => request(endpoint, { method: 'PUT', body: JSON.stringify(body), ...options }),
+  delete: (endpoint, options = {}) => request(endpoint, { method: 'DELETE', ...options }),
 };
 
 export default api;

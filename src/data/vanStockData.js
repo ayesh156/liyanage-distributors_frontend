@@ -57,7 +57,7 @@ export const DEFAULT_VEHICLE = {
 export const INITIAL_LOCATIONS = [
   {
     id: 'LOC_MAIN',
-    name: 'Central Main Store Warehouse',
+    name: 'Central Warehouse',
     type: 'MAIN_STORE',
     vehicleId: null,
     description: 'Central buffer warehouse and supplier receiving hub, Hakmana Rd, Deiyandara',
@@ -65,7 +65,7 @@ export const INITIAL_LOCATIONS = [
   },
   {
     id: 'LOC_VAN_01',
-    name: 'Delivery Van 01 (WP KDK-4521)',
+    name: 'Delivery Van',
     type: 'VEHICLE',
     vehicleId: DEFAULT_VAN_ID,
     description: 'Active field sales truck serving Morawaka & Southern regional route',

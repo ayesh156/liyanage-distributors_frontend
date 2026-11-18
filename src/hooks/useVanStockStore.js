@@ -749,7 +749,7 @@ export const useVanStockStore = create((set, get) => ({
         productId: prod.id,
         sku: prod.sku,
         name: prod.name,
-        category: prod.category || 'General',
+        category: prod.category || 'Uncategorized',
         unit: prod.unit,
         basePrice: prod.basePrice,
         discountPercent: prod.companyDiscountPercent,
@@ -877,6 +877,7 @@ export const useVanStockStore = create((set, get) => ({
           ...payload,
           vehicleId: get().vehicle?.id || 'VAN-01',
         });
+        await get().fetchInitialData();
       } catch (err) {
         console.warn('Backend loadVanStock sync error:', err);
       }
@@ -981,6 +982,7 @@ export const useVanStockStore = create((set, get) => ({
           ...payload,
           vehicleId: get().vehicle?.id || 'VAN-01',
         });
+        await get().fetchInitialData();
       } catch (err) {
         console.warn('Backend returnToStore sync error:', err);
       }
@@ -1281,6 +1283,7 @@ export const useVanStockStore = create((set, get) => ({
           notes,
           performedBy,
         });
+        await get().fetchInitialData();
       } catch (err) {
         console.warn('Backend adjustMainStoreStock sync error:', err);
       }
@@ -1464,25 +1467,49 @@ export const useVanStockStore = create((set, get) => ({
             unit: productData.unit || p.unit,
             basePrice: Math.max(0, Number(productData.basePrice) || 0),
             companyDiscountPercent: Math.max(0, Number(productData.companyDiscountPercent) || 0),
-            targetCapacity: Math.max(0, Number(productData.targetCapacity) || 100),
+            targetCapacity: Math.max(0, Number(productData.targetCapacity) || 1),
           };
         }
         return p;
       });
 
+      let mainStoreFound = false;
       const updatedMainStore = mainStoreStock.map((m) => {
         if (m.productId === prodId) {
+          mainStoreFound = true;
           return {
             ...m,
             productName: productData.name.trim(),
             sku: productData.sku.trim(),
             unit: productData.unit || m.unit,
+            quantity: productData.warehouseQty !== undefined ? Math.max(0, Number(productData.warehouseQty) || 0) : m.quantity,
             basePrice: Math.max(0, Number(productData.basePrice) || 0),
             companyDiscountPercent: Math.max(0, Number(productData.companyDiscountPercent) || 0),
+            targetCapacity: Math.max(0, Number(productData.targetCapacity) || 1),
+            isActive: true,
           };
         }
         return m;
       });
+
+      if (!mainStoreFound && productData.warehouseQty !== undefined) {
+        updatedMainStore.push({
+          id: Date.now() + Math.floor(Math.random() * 100),
+          locationId: 'LOC_MAIN',
+          locationType: 'MAIN_STORE',
+          vehicleId: null,
+          productId: prodId,
+          productName: productData.name.trim(),
+          sku: productData.sku.trim(),
+          unit: productData.unit || 'Unit',
+          quantity: Math.max(0, Number(productData.warehouseQty) || 0),
+          basePrice: Math.max(0, Number(productData.basePrice) || 0),
+          companyDiscountPercent: Math.max(0, Number(productData.companyDiscountPercent) || 0),
+          targetCapacity: Math.max(0, Number(productData.targetCapacity) || 1),
+          status: 'APPROVED',
+          isActive: true,
+        });
+      }
 
       const updatedVanStock = vanStock.map((v) => {
         if (v.productId === prodId) {
@@ -1493,7 +1520,7 @@ export const useVanStockStore = create((set, get) => ({
             unit: productData.unit || v.unit,
             basePrice: Math.max(0, Number(productData.basePrice) || 0),
             companyDiscountPercent: Math.max(0, Number(productData.companyDiscountPercent) || 0),
-            targetCapacity: Math.max(0, Number(productData.targetCapacity) || 100),
+            targetCapacity: Math.max(0, Number(productData.targetCapacity) || 1),
           };
         }
         return v;
@@ -1514,8 +1541,10 @@ export const useVanStockStore = create((set, get) => ({
           unit: productData.unit,
           basePrice: Number(productData.basePrice) || 0,
           companyDiscountPercent: Number(productData.companyDiscountPercent) || 0,
-          targetCapacity: Number(productData.targetCapacity) || 100,
+          targetCapacity: Number(productData.targetCapacity) || 1,
+          warehouseQty: productData.warehouseQty !== undefined ? Number(productData.warehouseQty) || 0 : undefined,
         });
+        await get().fetchInitialData();
       } catch (err) {
         console.warn('Backend updateProduct sync error:', err);
       }
@@ -1536,11 +1565,11 @@ export const useVanStockStore = create((set, get) => ({
       id: newId,
       sku: productData.sku.trim().toUpperCase(),
       name: productData.name.trim(),
-      category: productData.category || 'General Hardware',
+      category: productData.category || 'Uncategorized',
       unit: productData.unit || 'Unit',
       basePrice: Math.max(0, Number(productData.basePrice) || 0),
       companyDiscountPercent: Math.max(0, Number(productData.companyDiscountPercent) || 0),
-      targetCapacity: Math.max(0, Number(productData.targetCapacity) || 100),
+      targetCapacity: Math.max(0, Number(productData.targetCapacity) || 1),
       isActive: true,
     };
 
@@ -1588,6 +1617,7 @@ export const useVanStockStore = create((set, get) => ({
         }));
         persistState(get());
       }
+      await get().fetchInitialData();
     } catch (err) {
       console.warn('Backend registerProduct sync error:', err);
     }
@@ -1597,26 +1627,41 @@ export const useVanStockStore = create((set, get) => ({
 
   /**
    * Action 10: Soft Delete Product SKU & Associated Stock
+   * Optimistically purges target SKU across all local in-memory stores to eliminate
+   * ghost rows and syncs with backend database asynchronously.
    */
   deleteProduct: async (productId) => {
     const { products, mainStoreStock, vanStock } = get();
     const prodId = Number(productId);
 
+    // 1. Immediately filter out from local state so it instantly disappears from UI
     set({
-      products: products.map((p) => (p.id === prodId ? { ...p, isActive: false } : p)),
-      mainStoreStock: mainStoreStock.map((m) =>
-        m.productId === prodId ? { ...m, isActive: false } : m
+      products: products.filter((p) => Number(p.id) !== prodId),
+      mainStoreStock: mainStoreStock.filter(
+        (m) => Number(m.productId || m.id) !== prodId
       ),
-      vanStock: vanStock.map((v) =>
-        v.productId === prodId ? { ...v, isActive: false } : v
+      vanStock: vanStock.filter(
+        (v) => Number(v.productId || v.id) !== prodId
       ),
     });
     persistState(get());
 
+    // 2. Call backend API (handles 404 / already deleted idempotently)
     try {
       await vanStockApi.deleteProduct(prodId);
     } catch (err) {
-      console.warn('Backend deleteProduct sync error:', err);
+      const status = err?.status || err?.response?.status;
+      const message = err?.message || err?.response?.data?.message || '';
+      if (status !== 404 && !message.toLowerCase().includes('already deleted') && !message.toLowerCase().includes('not found')) {
+        console.warn('Backend deleteProduct sync error:', err);
+      }
+    }
+
+    // 3. Immediately re-fetch initial data to align state with backend DB
+    try {
+      await get().fetchInitialData();
+    } catch (refetchErr) {
+      console.warn('Background refetch error after deleteProduct:', refetchErr);
     }
 
     return { success: true };
@@ -1674,16 +1719,31 @@ export const useVanStockStore = create((set, get) => ({
   },
 
   deleteCategory: async (id) => {
+    const catId = Number(id);
+    // 1. Immediately remove from local state to guarantee instantaneous UI responsiveness
+    set((state) => ({
+      categories: state.categories.filter((c) => Number(c.id) !== catId),
+    }));
+
+    // 2. Call backend API (handles 404 / already deleted gracefully)
     try {
-      await vanStockApi.deleteCategory(id);
-      set((state) => ({
-        categories: state.categories.filter((c) => c.id !== id),
-      }));
-      await get().fetchCategories();
-      return { success: true };
+      await vanStockApi.deleteCategory(catId);
     } catch (err) {
-      throw err;
+      const status = err?.status || err?.response?.status;
+      const message = err?.message || err?.response?.data?.message || '';
+      if (status !== 404 && !message.toLowerCase().includes('already deleted') && !message.toLowerCase().includes('not found')) {
+        console.warn('Backend deleteCategory sync error:', err);
+      }
     }
+
+    // 3. Immediately re-fetch categories to align state with backend DB
+    try {
+      await get().fetchCategories();
+    } catch (refetchErr) {
+      console.warn('Background refetch error after deleteCategory:', refetchErr);
+    }
+
+    return { success: true };
   },
 
   /**
@@ -1743,6 +1803,22 @@ export const useVanStockStore = create((set, get) => ({
           notes: resolutionNotes || 'Returned to supplier for warranty replacement',
         })
       );
+    } else if (status === 'LOGGED') {
+      movements.unshift(
+        buildMovementRecord({
+          movementType: 'RETURN_TO_DAMAGED_POOL',
+          sourceLocation: 'SUPPLIER_WARRANTY',
+          targetLocation: 'LOC_DAMAGED',
+          productId: record.productId,
+          productName: record.productName,
+          sku: record.sku,
+          quantity: record.quantity,
+          unitPrice: record.unitPrice,
+          reference: `RE-DMG-${id}`,
+          performedBy: 'Warehouse Manager',
+          notes: resolutionNotes || 'Reverted from Vendor Return to active Damaged Goods pool',
+        })
+      );
     }
 
     set({ damagedGoods: updated, stockMovements: movements });
@@ -1759,6 +1835,167 @@ export const useVanStockStore = create((set, get) => ({
     } catch (err) {
       console.warn('Backend updateDamagedStatus sync error:', err);
       // Suppress backend network failure so local optimistic update remains intact
+    }
+
+    return { success: true };
+  },
+
+  /**
+   * Action 11B: Undo accidental damaged goods logging, reversing stock back to Van/Warehouse.
+   */
+  undoDamagedRecord: async (recordId) => {
+    const { damagedGoods, stockMovements, mainStoreStock, products } = get();
+    const id = Number(recordId);
+
+    const record = damagedGoods.find((d) => d.id === id);
+    if (!record) throw new Error('Damaged goods record not found.');
+
+    try {
+      if (id && id <= 2147483647) {
+        await vanStockApi.undoDamagedToStock(id);
+      }
+    } catch (apiErr) {
+      console.warn('Backend undoDamagedToStock sync error:', apiErr);
+    }
+
+    // Restore strictly to Central Warehouse (LOC_MAIN)
+    let foundInMainStore = false;
+    const updatedMainStore = mainStoreStock.map((item) => {
+      if (item.productId === record.productId || item.id === record.productId || (record.sku && item.sku === record.sku)) {
+        foundInMainStore = true;
+        return {
+          ...item,
+          quantity: (item.quantity || 0) + record.quantity,
+          isActive: true,
+        };
+      }
+      return item;
+    });
+
+    if (!foundInMainStore) {
+      const prodInfo = products.find((p) => p.id === record.productId || (record.sku && p.sku === record.sku));
+      updatedMainStore.push({
+        id: Date.now() + Math.floor(Math.random() * 100),
+        locationId: 'LOC_MAIN',
+        locationType: 'MAIN_STORE',
+        productId: record.productId,
+        productName: record.productName,
+        sku: record.sku || prodInfo?.sku || '',
+        unit: record.unit || prodInfo?.unit || 'Unit',
+        quantity: record.quantity,
+        basePrice: record.unitPrice || prodInfo?.basePrice || 0,
+        companyDiscountPercent: prodInfo?.companyDiscountPercent || 0,
+        targetCapacity: 1,
+        status: 'APPROVED',
+        isActive: true,
+      });
+    }
+
+    // Mark damage record inactive
+    const updatedDamaged = damagedGoods.map((d) => {
+      if (d.id === id) {
+        return { ...d, isActive: false, status: 'WRITTEN_OFF', resolutionNotes: 'Restored to Central Warehouse' };
+      }
+      return d;
+    });
+
+    // Add movement
+    const movements = [...stockMovements];
+    movements.unshift(
+      buildMovementRecord({
+        movementType: 'WAREHOUSE_AUDIT_ADJUSTMENT',
+        sourceLocation: 'LOC_DAMAGED',
+        targetLocation: 'LOC_MAIN',
+        productId: record.productId,
+        productName: record.productName,
+        sku: record.sku,
+        quantity: record.quantity,
+        unitPrice: record.unitPrice,
+        reference: `UNDO-DMG-${id}`,
+        performedBy: 'Warehouse Manager',
+        notes: 'Restored damaged stock strictly to Central Warehouse (LOC_MAIN)',
+      })
+    );
+
+    set({ mainStoreStock: updatedMainStore, damagedGoods: updatedDamaged, stockMovements: movements });
+    persistState(get());
+    return { success: true };
+  },
+
+  /**
+   * Action 11C: Reverse / Return an individual stock movement.
+   * Restores quantity to source location, deducts from target location,
+   * and records an immutable WAREHOUSE_AUDIT_ADJUSTMENT movement.
+   */
+  reverseMovement: async (movementId) => {
+    const { stockMovements, vanStock, mainStoreStock } = get();
+    const id = Number(movementId);
+    const mov = stockMovements.find((m) => m.id === id);
+    if (!mov) throw new Error('Stock movement not found.');
+
+    if (mov.reference?.startsWith('REV-MOV-')) {
+      throw new Error('Cannot reverse a transaction that is already a reversal.');
+    }
+
+    const qty = Number(mov.quantity) || 0;
+    const prodId = mov.productId;
+
+    // Compensating reversal movement record
+    const reversalMov = buildMovementRecord({
+      movementType: 'WAREHOUSE_AUDIT_ADJUSTMENT',
+      sourceLocation: mov.targetLocation,
+      targetLocation: mov.sourceLocation,
+      productId: prodId,
+      productName: mov.productName,
+      sku: mov.sku,
+      quantity: qty,
+      unitPrice: mov.unitPrice,
+      reference: `REV-MOV-${id}`,
+      performedBy: 'Warehouse Manager',
+      notes: `Reversal of movement #${id} (${mov.movementType}): restored to ${mov.sourceLocation}, deducted from ${mov.targetLocation}`,
+    });
+
+    // Update vanStock and mainStoreStock optimistically
+    let updatedVan = [...vanStock];
+    let updatedMain = [...mainStoreStock];
+
+    // If sourceLocation was van, restore qty
+    if (mov.sourceLocation?.includes('VAN')) {
+      updatedVan = updatedVan.map((item) =>
+        item.productId === prodId ? { ...item, quantity: item.quantity + qty } : item
+      );
+    } else if (mov.sourceLocation === 'LOC_MAIN' || mov.sourceLocation === 'MAIN') {
+      updatedMain = updatedMain.map((item) =>
+        item.productId === prodId ? { ...item, quantity: item.quantity + qty } : item
+      );
+    }
+
+    // If targetLocation was van, deduct qty
+    if (mov.targetLocation?.includes('VAN')) {
+      updatedVan = updatedVan.map((item) =>
+        item.productId === prodId ? { ...item, quantity: Math.max(0, item.quantity - qty) } : item
+      );
+    } else if (mov.targetLocation === 'LOC_MAIN' || mov.targetLocation === 'MAIN') {
+      updatedMain = updatedMain.map((item) =>
+        item.productId === prodId ? { ...item, quantity: Math.max(0, item.quantity - qty) } : item
+      );
+    }
+
+    const newMovements = [reversalMov, ...stockMovements];
+
+    set({
+      vanStock: updatedVan,
+      mainStoreStock: updatedMain,
+      stockMovements: newMovements,
+    });
+    persistState(get());
+
+    try {
+      if (id && id <= 2147483647) {
+        await vanStockApi.reverseStockMovement(id);
+      }
+    } catch (err) {
+      console.warn('Backend reverseStockMovement sync error:', err);
     }
 
     return { success: true };

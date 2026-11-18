@@ -63,7 +63,7 @@ export default function EditVanItemQtyModal({ isOpen, onClose, item }) {
         delta === 0
           ? 'Quantity unchanged.'
           : delta > 0
-          ? `Added +${delta} ${item.unit} from Warehouse into ${item.vehicleId || 'VAN-01'}.`
+          ? `Added +${delta} ${item.unit} from Warehouse into Van.`
           : `Returned ${Math.abs(delta)} ${item.unit} back to Central Warehouse.`
       );
       onClose();

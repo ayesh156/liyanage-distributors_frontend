@@ -51,6 +51,7 @@ import AddProductModal from '../VanStock/AddProductModal';
 import LoadVanStockModal from '../VanStock/LoadVanStockModal';
 import ReturnToWarehouseModal from '../VanStock/ReturnToWarehouseModal';
 import CategoryManagerModal from './CategoryManagerModal';
+import UpdateStockModal from './UpdateStockModal';
 import OwnerSignatureModal from '../VanStock/OwnerSignatureModal';
 import DeleteConfirmModal from '../ui/DeleteConfirmModal';
 import useVanStockStore from '../../hooks/useVanStockStore';
@@ -343,10 +344,12 @@ export default function WarehouseManagement() {
 
   useEffect(() => {
     fetchInitialData();
-  }, [fetchInitialData]);
+  }, []);
 
   // Modals state
   const [modalAddProductOpen, setModalAddProductOpen] = useState(false);
+  const [modalUpdateStockOpen, setModalUpdateStockOpen] = useState(false);
+  const [stockItemToUpdate, setStockItemToUpdate] = useState(null);
   const [modalLoadVanOpen, setModalLoadVanOpen] = useState(false);
   const [modalReturnVanOpen, setModalReturnVanOpen] = useState(false);
   const [modalCategoryManagerOpen, setModalCategoryManagerOpen] = useState(false);
@@ -370,21 +373,16 @@ export default function WarehouseManagement() {
     setCalendarDateRange({ start: '', end: '' });
   };
 
-  // Master Categories list for SearchableSelect
+  // Master Categories list for SearchableSelect strictly from live DB
   const categoryOptions = useMemo(() => {
-    const set = new Set();
+    const list = [{ value: 'ALL', label: 'All Categories' }];
     if (categories && categories.length > 0) {
       categories.forEach((c) => {
-        if (c.name) set.add(c.name);
+        if (c.name) list.push({ value: c.name, label: c.name });
       });
     }
-    products.forEach((p) => {
-      if (p.category) set.add(p.category);
-    });
-    const list = [{ value: 'ALL', label: 'All Categories' }];
-    set.forEach((cat) => list.push({ value: cat, label: cat }));
     return list;
-  }, [categories, products]);
+  }, [categories]);
 
   // Stock availability options
   const stockAvailabilityOptions = [
@@ -396,16 +394,24 @@ export default function WarehouseManagement() {
 
   // Filtered Warehouse Catalog Items (computes first so dynamic KPIs react immediately)
   const filteredCatalog = useMemo(() => {
+    const liveCategories = new Set((categories || []).map((c) => c.name).filter(Boolean));
     return mainStoreStock.filter((item) => {
+      if (item.isActive === false) return false;
+      const product = products.find((p) => p.id === item.productId);
+      if (product && product.isActive === false) return false;
+
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
         !q ||
         item.productName.toLowerCase().includes(q) ||
         item.sku.toLowerCase().includes(q);
 
-      const product = products.find((p) => p.id === item.productId);
+      const productCategory =
+        product?.category && liveCategories.has(product.category)
+          ? product.category
+          : 'Uncategorized';
       const matchCategory =
-        categoryFilter === 'ALL' || (product && product.category === categoryFilter);
+        categoryFilter === 'ALL' || productCategory === categoryFilter;
 
       let matchStock = true;
       if (stockAvailabilityFilter === 'IN_STOCK') matchStock = item.quantity > 20;
@@ -468,8 +474,33 @@ export default function WarehouseManagement() {
     setModalLoadVanOpen(true);
   };
 
-  const handleEditSku = (prod) => {
-    setProductToEdit(prod);
+  const handleOpenUpdateStock = (item) => {
+    const prodId = item.productId || item.id;
+    const mainStock = mainStoreStock.find((m) => m.productId === prodId);
+    const prod = products.find((p) => p.id === prodId) || item;
+
+    setStockItemToUpdate({
+      id: prodId,
+      productId: prodId,
+      sku: item.sku || prod.sku,
+      name: item.productName || prod.name,
+      productName: item.productName || prod.name,
+      basePrice: item.basePrice || prod.basePrice || 0,
+      companyDiscountPercent: item.companyDiscountPercent || prod.companyDiscountPercent || 0,
+      currentStock: mainStock ? mainStock.quantity : (item.quantity ?? 0),
+    });
+    setModalUpdateStockOpen(true);
+  };
+
+  const handleEditSku = (prod, autoFocusStock = false) => {
+    const prodId = prod.productId || prod.id;
+    const mainStock = mainStoreStock.find((m) => m.productId === prodId);
+    setProductToEdit({
+      ...prod,
+      id: prodId,
+      warehouseQty: mainStock ? mainStock.quantity : (prod.quantity ?? 0),
+      autoFocusStock,
+    });
     setModalAddProductOpen(true);
   };
 
@@ -478,12 +509,18 @@ export default function WarehouseManagement() {
     setIsDeleteModalOpen(true);
   };
 
-  const confirmDeleteSku = () => {
+  const confirmDeleteSku = async () => {
     if (itemToDelete) {
-      deleteProduct(itemToDelete.prodId);
-      toast.info(`Deleted SKU "${itemToDelete.prodName}".`);
+      const { prodId, prodName } = itemToDelete;
       setItemToDelete(null);
       setIsDeleteModalOpen(false);
+      try {
+        await deleteProduct(prodId);
+        await fetchInitialData();
+        toast.info(`Deleted SKU "${prodName}".`);
+      } catch (err) {
+        toast.info(`SKU "${prodName}" removed.`);
+      }
     }
   };
 
@@ -499,7 +536,7 @@ export default function WarehouseManagement() {
               Warehouse Location
             </span>
             <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-              Central Warehouse (LOC_MAIN)
+              Central Warehouse
             </p>
           </div>
           <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 hidden sm:block" />
@@ -522,11 +559,11 @@ export default function WarehouseManagement() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+        <div className="flex flex-nowrap overflow-x-auto scrollbar-hide gap-2 pb-1 snap-x">
           <button
             type="button"
             onClick={() => setModalCategoryManagerOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
             title="Manage Product Categories"
           >
             <Tags size={15} className="text-indigo-600 dark:text-indigo-400" />
@@ -535,7 +572,7 @@ export default function WarehouseManagement() {
           <button
             type="button"
             onClick={() => setModalLoadVanOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent-600 hover:bg-accent-700 text-white font-bold text-xs transition-all cursor-pointer shadow-xs"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent-600 hover:bg-accent-700 text-white font-bold text-xs transition-all cursor-pointer shadow-xs"
             title="Load Stock to Van"
           >
             <ListPlus size={15} />
@@ -544,7 +581,7 @@ export default function WarehouseManagement() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+            className="flex-shrink-0 snap-start flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
             title="Print Warehouse Inventory"
           >
             <Printer size={15} />
@@ -617,29 +654,29 @@ export default function WarehouseManagement() {
       {/* ─────────────────────────────────────────────────────────────
           3. UNIFIED SEARCHABLESELECT & DATE PRESET FILTER ENGINE
          ───────────────────────────────────────────────────────────── */}
-      <div className="space-y-3">
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Search Query Input */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search warehouse catalog by SKU, product name..."
-            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500"
-          />
-        </div>
+      <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm space-y-3">
+        {/* Row 1: Search + Category/Stock Comboboxes */}
+        <div className="flex flex-wrap gap-2">
+          {/* Search Query Input */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search warehouse catalog by SKU, product name..."
+              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500"
+            />
+          </div>
 
-        {/* Universal SearchableSelect Controls (No native <select>) */}
-        <div className="flex items-center gap-2 flex-wrap">
           {/* Category Filter */}
           <div className="w-48 sm:w-56">
             <SearchableSelect
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={categoryOptions}
-              placeholder="Filter Category"
+              placeholder={categoryOptions.length <= 1 ? "No categories available" : "Filter Category"}
+              emptyMessage="No categories available"
               size="sm"
               icon={Filter}
               portal
@@ -658,21 +695,22 @@ export default function WarehouseManagement() {
             />
           </div>
         </div>
-      </div>
 
-        {/* Unified Day Pills & Popover Calendar Date Range Filter */}
-        <UnifiedDayPillsCalendarFilter
-          selectedDayOfWeek={selectedDayOfWeek}
-          onSelectDayOfWeek={setSelectedDayOfWeek}
-          calendarDateRange={calendarDateRange}
-          onSelectDateRange={(range) => {
-            setCalendarDateRange(range);
-            setSelectedDayOfWeek('ALL');
-          }}
-          onReset={handleResetDateFilters}
-          label="Warehouse Audit Scope"
-          resultCount={filteredCatalog.length}
-        />
+        {/* Row 2: Day pills + Date picker */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <UnifiedDayPillsCalendarFilter
+            selectedDayOfWeek={selectedDayOfWeek}
+            onSelectDayOfWeek={setSelectedDayOfWeek}
+            calendarDateRange={calendarDateRange}
+            onSelectDateRange={(range) => {
+              setCalendarDateRange(range);
+              setSelectedDayOfWeek('ALL');
+            }}
+            onReset={handleResetDateFilters}
+            label="Warehouse Audit Scope"
+            resultCount={filteredCatalog.length}
+          />
+        </div>
       </div>
 
   {/* ─────────────────────────────────────────────────────────────
@@ -750,7 +788,9 @@ export default function WarehouseManagement() {
                     </td>
 
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                      {product?.category || 'General'}
+                      {product?.category && categories?.some((c) => c.name === product.category)
+                        ? product.category
+                        : 'Uncategorized'}
                     </td>
 
                     <td className="py-3 px-3 text-center text-slate-500 dark:text-slate-300">
@@ -817,8 +857,14 @@ export default function WarehouseManagement() {
                               Load to Van
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              icon={Package}
+                              onClick={() => handleOpenUpdateStock(item)}
+                            >
+                              Update Stock
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               icon={Edit}
-                              onClick={() => handleEditSku(product || item)}
+                              onClick={() => handleEditSku(product || item, false)}
                             >
                               Edit SKU Specs
                             </DropdownMenuItem>
@@ -859,7 +905,9 @@ export default function WarehouseManagement() {
                       {item.productName}
                     </h3>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {product?.category || 'General'}
+                      {product?.category && categories?.some((c) => c.name === product.category)
+                        ? product.category
+                        : 'Uncategorized'}
                     </p>
                   </div>
 
@@ -918,8 +966,14 @@ export default function WarehouseManagement() {
                         className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-xl z-[9999]"
                       >
                         <DropdownMenuItem
+                          icon={Package}
+                          onClick={() => handleOpenUpdateStock(item)}
+                        >
+                          Update Stock
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           icon={Edit}
-                          onClick={() => handleEditSku(product || item)}
+                          onClick={() => handleEditSku(product || item, false)}
                         >
                           Edit SKU Specs
                         </DropdownMenuItem>
@@ -944,19 +998,32 @@ export default function WarehouseManagement() {
   }
       </div >
 
-  {/* ─────────────────────────────────────────────────────────────
+      {/* ─────────────────────────────────────────────────────────────
           5. OPERATIONAL MODALS
          ───────────────────────────────────────────────────────────── */}
-    < AddProductModal
-  isOpen = { modalAddProductOpen }
-  onClose = {() => {
-    setModalAddProductOpen(false);
-    setProductToEdit(null);
-  }
-}
-productToEdit = { productToEdit }
-  />
+      <AddProductModal
+        isOpen={modalAddProductOpen}
+        onClose={() => {
+          setModalAddProductOpen(false);
+          setProductToEdit(null);
+        }}
+        onSuccess={async () => {
+          await fetchInitialData();
+        }}
+        productToEdit={productToEdit}
+      />
 
+      <UpdateStockModal
+        isOpen={modalUpdateStockOpen}
+        onClose={() => {
+          setModalUpdateStockOpen(false);
+          setStockItemToUpdate(null);
+        }}
+        onSuccess={async () => {
+          await fetchInitialData();
+        }}
+        product={stockItemToUpdate}
+      />
 
       <LoadVanStockModal
         isOpen={modalLoadVanOpen}
@@ -964,12 +1031,18 @@ productToEdit = { productToEdit }
           setModalLoadVanOpen(false);
           setTargetProductId(null);
         }}
+        onSuccess={async () => {
+          await fetchInitialData();
+        }}
         initialProductId={targetProductId}
       />
 
       <ReturnToWarehouseModal
         isOpen={modalReturnVanOpen}
         onClose={() => setModalReturnVanOpen(false)}
+        onSuccess={async () => {
+          await fetchInitialData();
+        }}
       />
 
       <CategoryManagerModal

@@ -239,7 +239,7 @@ export default function VanStockRepView() {
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span>Sales Rep Digital Manifest Acceptance</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-accent-50 text-accent-700 border border-accent-200 dark:bg-accent-950/60 dark:text-accent-300 dark:border-accent-800/60 font-mono font-bold">
-                {vanId || vehicle.id}
+                Van
               </span>
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -314,7 +314,7 @@ export default function VanStockRepView() {
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <div>
-              <p className="font-bold">Partial Discrepancy Active on Truck {vanId || vehicle.id}</p>
+              <p className="font-bold">Partial Discrepancy Active on Van</p>
               <p className="text-[11px] text-amber-800 dark:text-amber-300">
                 {dailyManifest.uncheckedCount || uncheckedCount} item(s) were flagged as unverified during field count. Warehouse Dispatch has been alerted.
               </p>
@@ -497,7 +497,7 @@ export default function VanStockRepView() {
         {items.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs">
             <Truck className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            No stock loaded on {vehicle.id}.
+            No stock loaded on Van.
           </div>
         ) : (
           <div className="p-2 space-y-2">
@@ -590,8 +590,9 @@ export default function VanStockRepView() {
                   {/* Dual Verification Checkboxes: Morning Load & Evening Reconcile */}
                   <div className="flex items-center gap-4 self-end sm:self-center pl-2 sm:pl-4 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-slate-700 pt-2 sm:pt-0">
                     {/* Morning Checkbox */}
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    <label htmlFor={`morning-check-${item.id}`} className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-200">
                       <input
+                        id={`morning-check-${item.id}`}
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => handleToggleCheck(item.id)}
@@ -603,8 +604,9 @@ export default function VanStockRepView() {
                     </label>
 
                     {/* Evening Reconciled Checkbox */}
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    <label htmlFor={`evening-check-${item.id}`} className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-200">
                       <input
+                        id={`evening-check-${item.id}`}
                         type="checkbox"
                         checked={isEveningChecked}
                         onChange={() => handleToggleEveningCheck(item.id)}

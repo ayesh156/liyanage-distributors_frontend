@@ -22,7 +22,7 @@ export const vanStockApi = {
   },
 
   async deleteProduct(id) {
-    return await api.delete(`/warehouse/products/${id}`);
+    return await api.delete(`/warehouse/products/${id}`, { suppressToast: true });
   },
 
   async receivePurchaseOrder(payload) {
@@ -55,7 +55,7 @@ export const vanStockApi = {
   },
 
   async deleteCategory(id) {
-    return await api.delete(`/warehouse/categories/${id}`);
+    return await api.delete(`/warehouse/categories/${id}`, { suppressToast: true });
   },
 
   // ── Vehicle Profile & Physical Image Storage APIs ──
@@ -114,6 +114,21 @@ export const vanStockApi = {
 
   async deleteDamagedRecord(id) {
     return await api.delete(`/damaged-goods/${id}`);
+  },
+
+  async undoDamagedToStock(id) {
+    try {
+      return await api.post(`/damaged-goods/${id}/undo-to-stock`);
+    } catch (err) {
+      if (err?.status === 404) {
+        return await api.post(`/van-stock/damaged-goods/${id}/undo-to-stock`);
+      }
+      throw err;
+    }
+  },
+
+  async reverseStockMovement(id) {
+    return await api.post(`/van-stock/movements/${id}/reverse`);
   },
 
   // ── Daily Delivery Manifest APIs ──

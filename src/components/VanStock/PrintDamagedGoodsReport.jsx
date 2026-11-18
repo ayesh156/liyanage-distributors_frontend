@@ -12,6 +12,18 @@ import { Printer, X } from 'lucide-react';
 import useVanStockStore from '../../hooks/useVanStockStore';
 import { formatLKR, formatDateYYYYMMDD } from '../../data/vanStockData';
 
+function formatPrintDateTime(d = new Date()) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  let hours = dt.getHours();
+  const mins = String(dt.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  return `${yyyy}-${mm}-${dd} ${String(hours).padStart(2, '0')}:${mins} ${ampm}`;
+}
+
 export default function PrintDamagedGoodsReport({
   isOpen,
   onClose,
@@ -93,81 +105,59 @@ export default function PrintDamagedGoodsReport({
       <div className="flex-1 flex justify-center py-2 sm:py-3 px-2 sm:px-4 print:p-0 print:m-0">
         <div
           id="damaged-goods-report-sheet"
-          className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 py-6 sm:py-8 px-4 sm:px-6 shadow-xl rounded-xl print:shadow-none print:rounded-none print:m-0 print:py-4 print:px-[6mm] print:w-full print:max-w-none text-xs overflow-visible"
+          className="w-full max-w-[210mm] min-h-[297mm] bg-white text-black pt-3 pb-4 sm:pt-4 sm:pb-6 px-4 sm:px-6 shadow-xl rounded-xl print:shadow-none print:rounded-none print:m-0 print:pt-2 print:pb-3 print:px-[6mm] print:w-full print:max-w-none text-xs overflow-visible"
           style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}
         >
-          {/* Header */}
-          <div className="flex items-start justify-between border-b-2 border-slate-900 pb-2">
+          {/* Header (Compact Height & Bottom-Aligned Title Box) */}
+          <div className="flex items-end justify-between border-b-2 border-black pb-1.5 pt-1">
             <div className="flex items-center gap-3">
               <img
                 src="/inv_logo.png"
                 alt="Liyanage Distributors Logo"
-                className="w-16 h-16 object-contain"
+                className="w-12 h-12 object-contain"
                 onError={(e) => {
                   e.target.style.display = 'none';
                 }}
               />
               <div>
-                <h1 className="text-base sm:text-lg font-extrabold uppercase tracking-tight text-slate-900">
+                <h1 className="text-xl font-extrabold uppercase tracking-tight text-black leading-tight">
                   Liyanage Distributors
                 </h1>
-                <p className="text-[10.5px] font-semibold text-slate-700">
-                  Hardware & Electrical Wholesaler * Central Quarantine & Defect Control
-                </p>
-                <p className="text-[9.5px] text-slate-500">
-                  Hakmana Road, Deiyandara, Southern Province, Sri Lanka * Tel: 041-2268123 / 077-1112233
+                <p className="text-xs font-semibold text-black mt-0.5">
+                  Hakmana Road, Deiyandara, Matara. * Tel: 070-5237647 / 071-5944711
                 </p>
               </div>
             </div>
 
-            <div className="text-right flex-shrink-0">
-              <span className="inline-block px-2 py-0.5 rounded border border-slate-900 text-slate-900 text-[9px] font-bold tracking-widest uppercase bg-transparent">
-                Damaged Goods Audit
+            <div className="text-right flex-shrink-0 self-end">
+              <span className="inline-block px-2.5 py-0.5 rounded border-2 border-black text-black text-xs font-black tracking-widest uppercase bg-transparent">
+                DAMAGE REPORT
               </span>
-              <p className="mt-0.5 font-mono font-bold text-xs text-slate-900">{reportDocNo}</p>
-              <p className="text-[9.5px] text-slate-600 mt-0.5">{currentDate}</p>
-            </div>
-          </div>
-
-          {/* Audit Scope / Context Metadata - Eco Clean White Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2 p-2 rounded-lg bg-white border border-slate-300 text-[10px]">
-            <div>
-              <span className="text-[8.5px] uppercase text-slate-500 block font-semibold">Audit Date Scope</span>
-              <span className="font-bold text-slate-900">{dateRangeLabel}</span>
-            </div>
-            <div>
-              <span className="text-[8.5px] uppercase text-slate-500 block font-semibold">Filter Status</span>
-              <span className="font-bold text-slate-900">{statusLabel}</span>
-            </div>
-            <div>
-              <span className="text-[8.5px] uppercase text-slate-500 block font-semibold">Quarantine Ledger</span>
-              <span className="font-bold text-slate-900">LOC_DAMAGED (Central)</span>
-            </div>
-            <div>
-              <span className="text-[8.5px] uppercase text-slate-500 block font-semibold">Report Printed By</span>
-              <span className="font-bold text-slate-900">Internal Audit Control</span>
+              <p className="mt-0.5 font-mono font-bold text-xs text-black">
+                {formatPrintDateTime(new Date())}
+              </p>
             </div>
           </div>
 
           {/* KPI Summary Boxes - Low-Ink Outlined Design */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2">
-            <div className="p-2 rounded-lg border border-slate-300 bg-white">
-              <span className="text-[8.5px] uppercase font-semibold text-slate-500 block">Total Defective Units</span>
-              <span className="text-sm font-extrabold font-mono text-slate-900">{totalDefectiveUnits}</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-2">
+            <div className="p-2 rounded-lg border border-black bg-white">
+              <span className="text-[10px] uppercase font-bold text-black block">Total Defective Units</span>
+              <span className="text-sm font-bold font-mono text-black">{totalDefectiveUnits}</span>
             </div>
-            <div className="p-2 rounded-lg border border-slate-900 bg-white">
-              <span className="text-[8.5px] uppercase font-bold text-slate-900 block">Total Loss Valuation</span>
-              <span className="text-sm font-extrabold font-mono text-slate-900">{formatLKR(totalLossValuation)}</span>
+            <div className="p-2 rounded-lg border border-black bg-white">
+              <span className="text-[10px] uppercase font-bold text-black block">Total Loss Valuation</span>
+              <span className="text-sm font-bold font-mono text-black">{formatLKR(totalLossValuation)}</span>
             </div>
-            <div className="p-2 rounded-lg border border-slate-300 bg-white">
-              <span className="text-[8.5px] uppercase font-semibold text-slate-500 block">Logged / Inspected</span>
-              <span className="text-sm font-extrabold font-mono text-slate-900">
+            <div className="p-2 rounded-lg border border-black bg-white">
+              <span className="text-[10px] uppercase font-bold text-black block">Logged / Inspected</span>
+              <span className="text-sm font-bold font-mono text-black">
                 {(statusCounts['LOGGED'] || 0) + (statusCounts['INSPECTED'] || 0)}
               </span>
             </div>
-            <div className="p-2 rounded-lg border border-slate-300 bg-white">
-              <span className="text-[8.5px] uppercase font-semibold text-slate-500 block">Resolved / Written Off</span>
-              <span className="text-sm font-extrabold font-mono text-slate-900">
+            <div className="p-2 rounded-lg border border-black bg-white">
+              <span className="text-[10px] uppercase font-bold text-black block">Resolved / Written Off</span>
+              <span className="text-sm font-bold font-mono text-black">
                 {(statusCounts['WRITTEN_OFF'] || 0) + (statusCounts['VENDOR_RETURN'] || 0)}
               </span>
             </div>
@@ -176,79 +166,52 @@ export default function PrintDamagedGoodsReport({
           {/* Itemized Defect Table - Rebalanced Proportions with Strict Wrapping & Zero Horizontal Overflow */}
           <table className="table-fixed w-full border-collapse my-2 text-left">
             <colgroup>
-              <col style={{ width: '3%' }} />
+              <col style={{ width: '4%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '30%' }} />
               <col style={{ width: '8%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '18%' }} />
-              <col style={{ width: '5%' }} />
-              <col style={{ width: '17%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '23%' }} />
               <col style={{ width: '11%' }} />
             </colgroup>
             <thead>
-              <tr className="border-y-2 border-slate-800 bg-slate-50/50 text-slate-900 text-[8.5px] uppercase font-bold">
-                <th className="py-2 px-1 text-center">#</th>
-                <th className="py-2 px-1 whitespace-nowrap">Date</th>
-                <th className="py-2 px-1 whitespace-nowrap">SKU</th>
-                <th className="py-2 px-1">Product Description</th>
-                <th className="py-2 px-1 text-center whitespace-nowrap">Qty</th>
-                <th className="py-2 px-1">Defect Reason</th>
-                <th className="py-2 px-1 text-center whitespace-nowrap">Invoice #</th>
-                <th className="py-2 px-1 text-center leading-tight">Reported By</th>
-                <th className="py-2 px-1 text-center whitespace-nowrap">Status</th>
-                <th className="py-2 px-1 pr-2 text-right whitespace-nowrap">Loss (LKR)</th>
+              <tr className="border-y-2 border-black bg-transparent text-[11px] font-bold text-black uppercase tracking-wider">
+                <th className="py-2 px-1 text-center text-[11px] font-bold text-black uppercase tracking-wider">#</th>
+                <th className="py-2 px-1 whitespace-nowrap text-left text-[11px] font-bold text-black uppercase tracking-wider">Date</th>
+                <th className="py-2 px-1 whitespace-nowrap text-left text-[11px] font-bold text-black uppercase tracking-wider">SKU</th>
+                <th className="py-2 px-1 text-left text-[11px] font-bold text-black uppercase tracking-wider">Product Description</th>
+                <th className="py-2 px-1 text-center whitespace-nowrap text-[11px] font-bold text-black uppercase tracking-wider">Qty</th>
+                <th className="py-2 px-1 text-left text-[11px] font-bold text-black uppercase tracking-wider">Defect Reason</th>
+                <th className="py-2 px-1 pr-2 text-right whitespace-nowrap text-[11px] font-bold text-black uppercase tracking-wider">Loss (LKR)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-slate-300">
               {items.map((item, index) => {
                 const formattedDate = item.createdAt
                   ? new Date(item.createdAt).toISOString().slice(0, 10)
                   : 'N/A';
 
                 return (
-                  <tr key={item.id} className="bg-white hover:bg-slate-50 transition-colors">
-                    <td className="py-2.5 px-2 text-center text-slate-500 font-mono text-[9px]">
+                  <tr key={item.id} className="bg-white hover:bg-transparent">
+                    <td className="py-2 px-1 text-center text-xs font-medium text-black font-mono">
                       {index + 1}
                     </td>
-                    <td className="py-2.5 px-2 font-mono text-slate-700 text-[9px] whitespace-nowrap">
+                    <td className="py-2 px-1 font-mono text-xs font-medium text-black whitespace-nowrap">
                       {formattedDate}
                     </td>
-                    <td className="py-2.5 px-2 font-mono font-bold text-slate-900 text-[9px] whitespace-nowrap">
+                    <td className="py-2 px-1 font-mono font-bold text-xs text-black whitespace-nowrap">
                       {item.sku}
                     </td>
-                    <td className="py-2.5 px-2 text-slate-900 font-medium leading-relaxed break-words text-[9px]">
+                    <td className="py-2 px-1 text-xs font-medium text-black leading-relaxed break-words">
                       <div className="line-clamp-2">{item.productName}</div>
                     </td>
-                    <td className="py-2.5 px-2 text-center font-bold font-mono text-slate-900 text-[9px] whitespace-nowrap">
-                      {item.quantity} <span className="text-[8px] text-slate-500">{item.unit}</span>
+                    <td className="py-2 px-1 text-center font-bold font-mono text-xs text-black whitespace-nowrap">
+                      {item.quantity} <span className="text-[10px] text-black font-normal">{item.unit}</span>
                     </td>
-                    <td className="py-2.5 px-2 text-slate-700 text-[9px] leading-relaxed break-words">
+                    <td className="py-2 px-1 text-xs font-medium text-black leading-relaxed break-words">
                       <div className="line-clamp-2">{item.reason}</div>
                     </td>
-                    <td className="py-2.5 px-2 text-center font-mono text-[9px] text-slate-600 whitespace-nowrap">
-                      {item.sourceInvoiceNo || 'N/A'}
-                    </td>
-                    <td className="py-2.5 px-1 text-center text-slate-800 text-[9px] leading-tight break-words">
-                      {item.reportedBy}
-                    </td>
-                    <td className="py-2.5 px-1 text-center">
-                      <span
-                        className={`inline-block px-1 py-0.5 rounded text-[7.5px] tracking-tighter font-bold uppercase border whitespace-nowrap ${
-                          item.status === 'WRITTEN_OFF'
-                            ? 'border-slate-300 bg-slate-50 text-slate-700'
-                            : item.status === 'VENDOR_RETURN'
-                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                            : item.status === 'INSPECTED'
-                            ? 'border-amber-200 bg-amber-50 text-amber-700'
-                            : 'border-rose-200 bg-rose-50 text-rose-700'
-                        }`}
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-1 pr-2 text-right font-mono font-bold text-slate-900 text-[9px] whitespace-nowrap">
+                    <td className="py-2 px-1 pr-2 text-right font-mono font-bold text-xs text-black whitespace-nowrap">
                       {Number(item.totalValue || 0).toFixed(2)}
                     </td>
                   </tr>
@@ -256,43 +219,50 @@ export default function PrintDamagedGoodsReport({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-b-2 border-slate-800 bg-slate-50/50 font-bold text-[10px] text-slate-900">
-                <td colSpan={4} className="py-2 px-1 text-right uppercase tracking-wider">
-                  Total Quarantined Defect Summary:
-                </td>
-                <td className="py-2 px-1 text-center font-mono text-[10px] whitespace-nowrap">
-                  {totalDefectiveUnits} Units
-                </td>
-                <td colSpan={4} className="py-2 px-1 text-right font-mono text-slate-700 whitespace-nowrap uppercase tracking-wider">
-                  Total Net Quarantine Loss:
-                </td>
-                <td className="py-2 px-1 pr-2 text-right font-mono text-[10px] text-slate-900 font-black whitespace-nowrap">
-                  {formatLKR(totalLossValuation)}
+              <tr className="border-t-2 border-b-2 border-black">
+                <td colSpan={7} className="p-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-gray-50/80 text-xs font-bold text-black">
+                    <div className="flex items-center gap-1.5">
+                      <span className="uppercase tracking-wider">TOTAL QUARANTINED DEFECT SUMMARY:</span>
+                      <span className="font-mono">{totalDefectiveUnits} Units</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="uppercase tracking-wider">TOTAL NET QUARANTINE LOSS:</span>
+                      <span className="font-mono font-black">{formatLKR(totalLossValuation)}</span>
+                    </div>
+                  </div>
                 </td>
               </tr>
             </tfoot>
           </table>
 
           {/* Dual Signature Blocks - Spacious Layout Matching Manifest Report */}
-          <div className="grid grid-cols-2 gap-8 pt-10 mt-4 border-t border-slate-300">
+          <div className="grid grid-cols-2 gap-8 pt-8 mt-4 border-t border-black">
             <div className="text-center flex flex-col items-center">
               <div className="h-12 flex items-center justify-center mb-1">
 
               </div>
-              <div className="border-b border-dashed border-slate-500 w-3/4 mx-auto mb-1.5" />
-              <p className="font-bold text-slate-900 text-[10.5px]">Warehouse Quality Manager Signature</p>
-              <p className="text-[9.5px] text-slate-600">Name: Bandara (Head Storekeeper)</p>
-              <p className="text-[8.5px] text-slate-500 font-mono mt-0.5">Date: {formatDateYYYYMMDD(new Date())}</p>
+              <div className="border-b border-dashed border-black w-3/4 mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-black">Warehouse Quality Manager Signature</p>
+              <p className="text-[11px] font-medium text-black">Name: Bandara (Head Storekeeper)</p>
+              <p className="text-[11px] font-medium text-black font-mono mt-0.5">Date: {formatDateYYYYMMDD(new Date())}</p>
             </div>
 
             <div className="text-center flex flex-col items-center">
               <div className="h-12 flex items-center justify-center mb-1">
               </div>
-              <div className="border-b border-dashed border-slate-500 w-3/4 mx-auto mb-1.5" />
-              <p className="font-bold text-slate-900 text-[10.5px]">Managing Director / Loss Auditor</p>
-              <p className="text-[9.5px] text-slate-600">Name: W. Liyanage</p>
-              <p className="text-[8.5px] text-slate-500 font-mono mt-0.5">Liyanage Distributors Quality Audit</p>
+              <div className="border-b border-dashed border-black w-3/4 mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-black">Managing Director / Loss Auditor</p>
+              <p className="text-[11px] font-medium text-black">Name: W. Liyanage</p>
+              <p className="text-[11px] font-medium text-black font-mono mt-0.5">Liyanage Distributors Quality Audit</p>
             </div>
+          </div>
+
+          {/* Global Footer */}
+          <div className="mt-8 pt-3 border-t border-black text-center">
+            <p className="text-[10px] font-medium text-black text-center">
+              System by: nebulainfinite.com - 0783233760
+            </p>
           </div>
         </div>
       </div>
