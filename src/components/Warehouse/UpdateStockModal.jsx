@@ -17,6 +17,7 @@ import {
 import { toast } from 'react-toastify';
 import useVanStockStore from '../../hooks/useVanStockStore';
 import { formatLKR } from '../../data/vanStockData';
+import { handleNumericFocus } from '../../utils/numberInputUtils';
 
 export default function UpdateStockModal({
   isOpen,
@@ -205,7 +206,9 @@ export default function UpdateStockModal({
               <input
                 type="number"
                 step="any"
+                inputMode="decimal"
                 value={adjustmentQty}
+                onFocus={(e) => handleNumericFocus(e, setAdjustmentQty)}
                 onChange={(e) => {
                   setAdjustmentQty(e.target.value);
                   setError('');

@@ -17,6 +17,11 @@ import {
   formatLKR,
   generateAutoSku,
 } from '../../data/vanStockData';
+import {
+  handleNumericFocus,
+  normalizeNumericChange,
+  handleNumericBlur,
+} from '../../utils/numberInputUtils';
 
 export default function AddProductModal({ isOpen, onClose, productToEdit = null, onSuccess = null }) {
   const saveProduct = useVanStockStore((s) => s.saveProduct);
@@ -135,11 +140,11 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null,
         name: name.trim(),
         category: category || 'Uncategorized',
         unit: 'Unit',
-        basePrice: Number(basePrice),
-        companyDiscountPercent: Number(companyDiscountPercent) || 0,
-        targetCapacity: Number(targetCapacity) || 1,
-        initialQuantity: Number(initialQuantity) || 0,
-        warehouseQty: isEdit ? Number(warehouseQty) || 0 : undefined,
+        basePrice: typeof basePrice === 'string' ? parseFloat(basePrice) || 0 : Number(basePrice),
+        companyDiscountPercent: typeof companyDiscountPercent === 'string' ? parseFloat(companyDiscountPercent) || 0 : Number(companyDiscountPercent) || 0,
+        targetCapacity: typeof targetCapacity === 'string' ? parseFloat(targetCapacity) || 1 : Number(targetCapacity) || 1,
+        initialQuantity: typeof initialQuantity === 'string' ? parseFloat(initialQuantity) || 0 : Number(initialQuantity) || 0,
+        warehouseQty: isEdit ? (typeof warehouseQty === 'string' ? parseFloat(warehouseQty) || 0 : Number(warehouseQty) || 0) : undefined,
       };
 
       const result = await saveProduct(payload);
@@ -271,10 +276,15 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null,
                 type="number"
                 min="0"
                 step="any"
+                inputMode="decimal"
                 value={isEdit ? warehouseQty : initialQuantity}
-                onChange={(e) =>
-                  isEdit ? setWarehouseQty(e.target.value) : setInitialQuantity(e.target.value)
-                }
+                onFocus={(e) => handleNumericFocus(e, isEdit ? setWarehouseQty : setInitialQuantity)}
+                onChange={(e) => {
+                  const val = normalizeNumericChange(e.target.value);
+                  if (isEdit) setWarehouseQty(val);
+                  else setInitialQuantity(val);
+                }}
+                onBlur={(e) => handleNumericBlur(e, isEdit ? setWarehouseQty : setInitialQuantity, isEdit ? '0' : '1')}
                 placeholder={isEdit ? 'e.g. 50' : 'e.g. 1'}
                 className="w-full h-[40px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-200 hover:border-gray-300 dark:border-slate-700 dark:hover:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 transition-all"
               />
@@ -290,9 +300,12 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null,
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="any"
+                inputMode="decimal"
                 value={basePrice}
-                onChange={(e) => setBasePrice(e.target.value)}
+                onFocus={(e) => handleNumericFocus(e, setBasePrice)}
+                onChange={(e) => setBasePrice(normalizeNumericChange(e.target.value))}
+                onBlur={(e) => handleNumericBlur(e, setBasePrice, '')}
                 placeholder="0.00"
                 className="w-full px-3 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
               />
@@ -306,8 +319,12 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null,
                 type="number"
                 min="0"
                 max="100"
+                step="any"
+                inputMode="decimal"
                 value={companyDiscountPercent}
-                onChange={(e) => setCompanyDiscountPercent(e.target.value)}
+                onFocus={(e) => handleNumericFocus(e, setCompanyDiscountPercent)}
+                onChange={(e) => setCompanyDiscountPercent(normalizeNumericChange(e.target.value))}
+                onBlur={(e) => handleNumericBlur(e, setCompanyDiscountPercent, '0')}
                 placeholder="10"
                 className="w-full px-3 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
               />
@@ -320,8 +337,12 @@ export default function AddProductModal({ isOpen, onClose, productToEdit = null,
               <input
                 type="number"
                 min="1"
+                step="any"
+                inputMode="decimal"
                 value={targetCapacity}
-                onChange={(e) => setTargetCapacity(e.target.value)}
+                onFocus={(e) => handleNumericFocus(e, setTargetCapacity)}
+                onChange={(e) => setTargetCapacity(normalizeNumericChange(e.target.value))}
+                onBlur={(e) => handleNumericBlur(e, setTargetCapacity, '1')}
                 placeholder="1"
                 className="w-full px-3 py-2 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
               />

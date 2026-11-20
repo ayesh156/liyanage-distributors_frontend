@@ -12,7 +12,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, RotateCcw, CheckCircle2, PenTool, ShieldCheck, AlertCircle } from 'lucide-react';
+import { X, RotateCcw, CheckCircle2, PenTool, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { formatDateYYYYMMDD } from '../../utils/date';
 
@@ -21,12 +21,13 @@ export default function SignaturePadModal({
   onClose,
   onSave,
   defaultSignerName = 'Kamal Perera',
-  title = 'Sales Representative Digital Acceptance Signature',
+  title = 'Driver Digital Acceptance Signature',
   vehicleId = 'VAN-01',
   manifestNo = 'MAN-20261105-01',
   uncheckedCount = 0,
   totalCount = 0,
   verifiedCount,
+  signatoryRole = 'Driver',
 }) {
   const canvasRef = useRef(null);
   const isDrawingRef = useRef(false);
@@ -34,6 +35,8 @@ export default function SignaturePadModal({
   const [hasDrawn, setHasDrawn] = useState(false);
   const [signerName, setSignerName] = useState(defaultSignerName);
   const [signDate, setSignDate] = useState('');
+
+  const roleLabel = signatoryRole || 'Driver';
 
   // Calculate verified items count; if verifiedCount is passed use it, otherwise derive from totalCount - uncheckedCount
   const checkedCount = typeof verifiedCount === 'number' ? verifiedCount : Math.max(0, totalCount - uncheckedCount);
@@ -318,27 +321,26 @@ export default function SignaturePadModal({
 
         {/* Modal Body */}
         <div className="p-5 overflow-y-auto space-y-4">
-          {/* Signer Identity Input (Locked - Read-Only for Assigned Sales Representative) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Signer Identity Input (Clean Single-Line Label & Aligned Input Baselines) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Representative Signer Full Name <span className="text-slate-400 font-normal text-[10px]">(Assigned Rep — Locked)</span>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 whitespace-nowrap">
+                {roleLabel} Full Name
               </label>
               <input
                 type="text"
                 value={signerName}
-                readOnly={true}
-                disabled={true}
-                placeholder="e.g. Kamal Perera"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium cursor-not-allowed select-none focus:outline-none"
+                onChange={(e) => setSignerName(e.target.value)}
+                placeholder={`e.g. ${defaultSignerName || 'Kamal Perera'}`}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 whitespace-nowrap">
                 Sign-Off Timestamp
               </label>
-              <div className="px-3 py-2 text-xs rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono truncate">
+              <div className="px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono truncate h-[38px] flex items-center">
                 {signDate || 'Current Local Time'}
               </div>
             </div>
@@ -416,17 +418,6 @@ export default function SignaturePadModal({
               </p>
             </div>
           )}
-
-          {/* Custodial Legal Notice */}
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-gray-200 dark:border-slate-700/80 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed flex items-start gap-2.5">
-            <ShieldCheck size={16} className="text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5" />
-            <p>
-              I hereby acknowledge physical verification and acceptance of all loaded products on{' '}
-              <strong className="text-slate-900 dark:text-white">{vehicleId}</strong>. I accept
-              custodial responsibility for these goods and agree to reconcile all sales invoices and
-              returns against this manifest.
-            </p>
-          </div>
         </div>
 
         {/* Footer Actions */}

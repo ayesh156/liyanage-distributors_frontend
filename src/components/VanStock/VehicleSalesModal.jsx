@@ -13,6 +13,7 @@ import Combobox from '@/components/ui/combobox';
 import useVanStockStore from '../../hooks/useVanStockStore';
 import useAppStore from '../../hooks/useAppStore';
 import { calcNetUnitPrice, calcTotalRealValue, formatLKR } from '../../data/vanStockData';
+import { handleNumericFocus, normalizeNumericChange, handleNumericBlur } from '../../utils/numberInputUtils';
 
 export default function VehicleSalesModal({
   isOpen,
@@ -136,11 +137,27 @@ export default function VehicleSalesModal({
   };
 
   const handleUpdateQty = (productId, qty) => {
-    const val = Number(qty);
+    const raw = normalizeNumericChange(qty);
     setItems((prev) =>
       prev.map((i) => {
         if (i.productId === productId) {
-          return { ...i, quantity: Math.max(1, Math.min(i.maxQty, val)) };
+          if (raw === '') {
+            return { ...i, quantity: '' };
+          }
+          const val = Number(raw);
+          return { ...i, quantity: Math.min(i.maxQty, Math.max(0, val)) };
+        }
+        return i;
+      })
+    );
+  };
+
+  const handleBlurQty = (productId) => {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.productId === productId) {
+          const val = Number(i.quantity);
+          return { ...i, quantity: Math.max(1, Math.min(i.maxQty, isNaN(val) || val <= 0 ? 1 : val)) };
         }
         return i;
       })
@@ -325,8 +342,12 @@ export default function VehicleSalesModal({
                           type="number"
                           min="1"
                           max={item.maxQty}
+                          step="any"
+                          inputMode="numeric"
                           value={item.quantity}
+                          onFocus={(e) => handleNumericFocus(e)}
                           onChange={(e) => handleUpdateQty(item.productId, e.target.value)}
+                          onBlur={() => handleBlurQty(item.productId)}
                           className="w-16 px-2 py-1 text-center font-bold text-xs rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                         />
                         <button

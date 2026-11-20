@@ -6,11 +6,12 @@
  * Features eco/low-ink print design, strict print portal isolation, and zero background bleed.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Printer, X } from 'lucide-react';
 import useVanStockStore from '../../hooks/useVanStockStore';
-import { formatLKR, formatDateYYYYMMDD } from '../../data/vanStockData';
+import { formatLKR, formatDateYYYYMMDD, getColomboDateStr } from '../../data/vanStockData';
+import { DEFAULT_OWNER_SIGNATURE } from '../../data/defaultOwnerSignature';
 
 function formatPrintDateTime(d = new Date()) {
   const dt = d instanceof Date ? d : new Date(d);
@@ -28,11 +29,16 @@ export default function PrintDamagedGoodsReport({
   isOpen,
   onClose,
   items: propItems,
-  dateRangeLabel = 'All Dates',
+  filterDate,
+  dateRange,
+  selectedDayOfWeek = 'ALL',
+  isAllDates = false,
   statusLabel = 'All Statuses',
 }) {
   const damagedGoods = useVanStockStore((s) => s.damagedGoods);
-  const items = propItems || damagedGoods;
+  const dailyManifest = useVanStockStore((s) => s.dailyManifest);
+  const ownerSignatureData = useVanStockStore((s) => s.ownerSignatureData);
+  const ownerSignature = ownerSignatureData || dailyManifest?.ownerSignatureData || DEFAULT_OWNER_SIGNATURE;
 
   // Toggle body print-modal-active class for strict print isolation
   useEffect(() => {
@@ -46,13 +52,35 @@ export default function PrintDamagedGoodsReport({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  const isMultiDay = Boolean(dateRange && dateRange.start && dateRange.end && dateRange.start !== dateRange.end);
+  const isAllSelected = Boolean(isAllDates || (selectedDayOfWeek === 'ALL' && !filterDate && (!dateRange || (!dateRange.start && !dateRange.end))));
+  const targetDate = filterDate || dateRange?.start;
 
-  const totalDefectiveUnits = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-  const totalLossValuation = items.reduce((sum, item) => sum + (Number(item.totalValue) || 0), 0);
+  const targetDateLabel = isAllSelected
+    ? 'Report Date: All Dates'
+    : isMultiDay
+    ? `Period: ${dateRange.start} to ${dateRange.end}`
+    : `Report Date: ${targetDate || 'All Dates'}`;
 
-  // Status breakdown
-  const statusCounts = items.reduce((acc, curr) => {
+  // Filter items matching active date filter scope (Asia/Colombo UTC+05:30)
+  const filteredReportItems = useMemo(() => {
+    const baseItems = propItems || damagedGoods || [];
+    if (isAllSelected) return baseItems;
+
+    return baseItems.filter((item) => {
+      const dStr = getColomboDateStr(item.createdAt || item.date);
+      if (isMultiDay) {
+        return dStr >= dateRange.start && dStr <= dateRange.end;
+      }
+      return dStr === targetDate;
+    });
+  }, [propItems, damagedGoods, isAllSelected, isMultiDay, dateRange, targetDate]);
+
+  const totalDefectiveUnits = filteredReportItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const totalLossValuation = filteredReportItems.reduce((sum, item) => sum + (Number(item.totalValue) || 0), 0);
+
+  // Status breakdown strictly from filtered rows
+  const statusCounts = filteredReportItems.reduce((acc, curr) => {
     const s = curr.status || 'LOGGED';
     acc[s] = (acc[s] || 0) + 1;
     return acc;
@@ -70,6 +98,9 @@ export default function PrintDamagedGoodsReport({
   const handlePrint = () => {
     window.print();
   };
+
+  // Safe early exit for closed modal after all React hooks have unconditionally evaluated
+  if (!isOpen) return null;
 
   const modalContent = (
     <div className="fixed inset-0 z-[120] flex flex-col bg-slate-900/80 backdrop-blur-md overflow-y-auto print:bg-white print:p-0">
@@ -134,7 +165,10 @@ export default function PrintDamagedGoodsReport({
                 DAMAGE REPORT
               </span>
               <p className="mt-0.5 font-mono font-bold text-xs text-black">
-                {formatPrintDateTime(new Date())}
+                {targetDateLabel}
+              </p>
+              <p className="font-mono text-[10px] text-black">
+                Printed: {formatPrintDateTime(new Date())}
               </p>
             </div>
           </div>
@@ -167,17 +201,17 @@ export default function PrintDamagedGoodsReport({
           <table className="table-fixed w-full border-collapse my-2 text-left">
             <colgroup>
               <col style={{ width: '4%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '30%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '29%' }} />
               <col style={{ width: '8%' }} />
-              <col style={{ width: '23%' }} />
+              <col style={{ width: '22%' }} />
               <col style={{ width: '11%' }} />
             </colgroup>
             <thead>
               <tr className="border-y-2 border-black bg-transparent text-[11px] font-bold text-black uppercase tracking-wider">
                 <th className="py-2 px-1 text-center text-[11px] font-bold text-black uppercase tracking-wider">#</th>
-                <th className="py-2 px-1 whitespace-nowrap text-left text-[11px] font-bold text-black uppercase tracking-wider">Date</th>
+                <th className="py-2 px-1 pr-3 whitespace-nowrap text-left text-[11px] font-bold text-black uppercase tracking-wider">Date</th>
                 <th className="py-2 px-1 whitespace-nowrap text-left text-[11px] font-bold text-black uppercase tracking-wider">SKU</th>
                 <th className="py-2 px-1 text-left text-[11px] font-bold text-black uppercase tracking-wider">Product Description</th>
                 <th className="py-2 px-1 text-center whitespace-nowrap text-[11px] font-bold text-black uppercase tracking-wider">Qty</th>
@@ -186,37 +220,43 @@ export default function PrintDamagedGoodsReport({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
-              {items.map((item, index) => {
-                const formattedDate = item.createdAt
-                  ? new Date(item.createdAt).toISOString().slice(0, 10)
-                  : 'N/A';
+              {filteredReportItems.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-xs text-slate-500 italic">
+                    {`No damaged goods recorded on ${isMultiDay ? `${dateRange.start} to ${dateRange.end}` : targetDate || 'selected date'}.`}
+                  </td>
+                </tr>
+              ) : (
+                filteredReportItems.map((item, index) => {
+                  const formattedDate = getColomboDateStr(item.createdAt || item.date) || 'N/A';
 
-                return (
-                  <tr key={item.id} className="bg-white hover:bg-transparent">
-                    <td className="py-2 px-1 text-center text-xs font-medium text-black font-mono">
-                      {index + 1}
-                    </td>
-                    <td className="py-2 px-1 font-mono text-xs font-medium text-black whitespace-nowrap">
-                      {formattedDate}
-                    </td>
-                    <td className="py-2 px-1 font-mono font-bold text-xs text-black whitespace-nowrap">
-                      {item.sku}
-                    </td>
-                    <td className="py-2 px-1 text-xs font-medium text-black leading-relaxed break-words">
-                      <div className="line-clamp-2">{item.productName}</div>
-                    </td>
-                    <td className="py-2 px-1 text-center font-bold font-mono text-xs text-black whitespace-nowrap">
-                      {item.quantity} <span className="text-[10px] text-black font-normal">{item.unit}</span>
-                    </td>
-                    <td className="py-2 px-1 text-xs font-medium text-black leading-relaxed break-words">
-                      <div className="line-clamp-2">{item.reason}</div>
-                    </td>
-                    <td className="py-2 px-1 pr-2 text-right font-mono font-bold text-xs text-black whitespace-nowrap">
-                      {Number(item.totalValue || 0).toFixed(2)}
-                    </td>
-                  </tr>
-                );
-              })}
+                  return (
+                    <tr key={item.id || index} className="bg-white hover:bg-transparent">
+                      <td className="py-2 px-1 text-center text-xs font-medium text-black font-mono">
+                        {index + 1}
+                      </td>
+                      <td className="py-2 px-1 pr-3 font-mono text-xs font-medium text-black whitespace-nowrap">
+                        {formattedDate}
+                      </td>
+                      <td className="py-2 px-1 font-mono font-bold text-xs text-black whitespace-nowrap">
+                        {item.sku}
+                      </td>
+                      <td className="py-2 px-1 text-xs font-medium text-black leading-relaxed break-words">
+                        <div className="line-clamp-2">{item.productName}</div>
+                      </td>
+                      <td className="py-2 px-1 text-center font-bold font-mono text-xs text-black whitespace-nowrap">
+                        {item.quantity} <span className="text-[10px] text-black font-normal">{item.unit}</span>
+                      </td>
+                      <td className="py-2 px-1 text-xs font-medium text-black leading-relaxed break-words">
+                        <div className="line-clamp-2">{item.reason}</div>
+                      </td>
+                      <td className="py-2 px-1 pr-2 text-right font-mono font-bold text-xs text-black whitespace-nowrap">
+                        {Number(item.totalValue || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-b-2 border-black">
@@ -236,25 +276,31 @@ export default function PrintDamagedGoodsReport({
             </tfoot>
           </table>
 
-          {/* Dual Signature Blocks - Spacious Layout Matching Manifest Report */}
-          <div className="grid grid-cols-2 gap-8 pt-8 mt-4 border-t border-black">
-            <div className="text-center flex flex-col items-center">
-              <div className="h-12 flex items-center justify-center mb-1">
-
+          {/* Single Signature Block - Strictly Right-Aligned Dispatcher / Owner Signature */}
+          <div className="flex justify-end pt-8 mt-4 border-t border-black">
+            <div className="w-72 text-center flex flex-col items-center">
+              <div className="h-14 flex items-center justify-center mb-1">
+                {ownerSignature ? (
+                  <img
+                    src={ownerSignature}
+                    alt="Warehouse Dispatcher / Owner Signature"
+                    className="max-h-12 max-w-[180px] object-contain filter contrast-125"
+                  />
+                ) : (
+                  <div className="text-[11px] text-black font-medium italic">Signature on file</div>
+                )}
               </div>
-              <div className="border-b border-dashed border-black w-3/4 mx-auto mb-1.5" />
-              <p className="text-xs font-bold text-black">Warehouse Quality Manager Signature</p>
-              <p className="text-[11px] font-medium text-black">Name: Bandara (Head Storekeeper)</p>
-              <p className="text-[11px] font-medium text-black font-mono mt-0.5">Date: {formatDateYYYYMMDD(new Date())}</p>
-            </div>
-
-            <div className="text-center flex flex-col items-center">
-              <div className="h-12 flex items-center justify-center mb-1">
-              </div>
-              <div className="border-b border-dashed border-black w-3/4 mx-auto mb-1.5" />
-              <p className="text-xs font-bold text-black">Managing Director / Loss Auditor</p>
-              <p className="text-[11px] font-medium text-black">Name: W. Liyanage</p>
-              <p className="text-[11px] font-medium text-black font-mono mt-0.5">Liyanage Distributors Quality Audit</p>
+              <div className="border-b border-dashed border-black w-full mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-black">Warehouse Dispatcher / Owner Signature</p>
+              <p className="text-[11px] font-medium text-black">
+                {dailyManifest?.ownerSignedBy || 'W. Liyanage (Managing Director / Owner)'}
+              </p>
+              <p className="text-[11px] font-medium text-black font-mono mt-0.5">
+                Timestamp:{' '}
+                {dailyManifest?.ownerSignedAt
+                  ? formatDateYYYYMMDD(dailyManifest.ownerSignedAt, true)
+                  : formatDateYYYYMMDD(new Date(), true)}
+              </p>
             </div>
           </div>
 

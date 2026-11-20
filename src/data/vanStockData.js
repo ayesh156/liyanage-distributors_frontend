@@ -2,6 +2,84 @@ import { DEFAULT_OWNER_SIGNATURE } from './defaultOwnerSignature.js';
 import { formatDateYYYYMMDD } from '../utils/date.js';
 
 export { formatDateYYYYMMDD };
+
+/**
+ * Formats a Date object, ISO timestamp, or date key string into Asia/Colombo (UTC+05:30) YYYY-MM-DD.
+ * Standardizes date extraction across Audit History, Print Sale Report, Print Stock Sheet, and Damage Report.
+ * Prevents UTC day-shifting discrepancies between server ISO timestamps and local calendar date pickers.
+ *
+ * @param {string|number|Date} val
+ * @returns {string} Formatted YYYY-MM-DD string
+ */
+export function getColomboDateStr(val) {
+  if (!val) return '';
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    const ymdMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    // If it's pure YYYY-MM-DD without time components, return directly
+    if (trimmed.length === 10 && ymdMatch) {
+      return trimmed;
+    }
+  }
+  const d = val instanceof Date ? val : new Date(val);
+  if (isNaN(d.getTime())) return '';
+  // Asia/Colombo is UTC+05:30 (+330 minutes)
+  const colomboTime = new Date(d.getTime() + (330 + d.getTimezoneOffset()) * 60000);
+  const yyyy = colomboTime.getFullYear();
+  const mm = String(colomboTime.getMonth() + 1).padStart(2, '0');
+  const dd = String(colomboTime.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Checks whether a stock movement record represents a Road Sale transaction.
+ * Matches raw outbound sales, consolidated daily sales, and road sale aliases.
+ *
+ * @param {Object} m - Movement record
+ * @returns {boolean}
+ */
+export function isRoadSaleMovement(m) {
+  if (!m) return false;
+  const type = String(m.movementType || m.type || '').toUpperCase();
+  return (
+    type === 'VEHICLE_SALES_OUTBOUND' ||
+    type === 'ROAD_SALE' ||
+    type === 'ROAD_SALES' ||
+    type === 'SALE' ||
+    Boolean(m.isGrouped)
+  );
+}
+
+/**
+ * Checks whether a stock movement record represents a Store-to-Vehicle Load transaction.
+ *
+ * @param {Object} m - Movement record
+ * @returns {boolean}
+ */
+export function isLoadMovement(m) {
+  if (!m) return false;
+  const type = String(m.movementType || m.type || '').toUpperCase();
+  return (
+    type === 'STORE_TO_VEHICLE_LOAD' ||
+    type === 'LOAD' ||
+    type === 'LOADED_TO_VAN'
+  );
+}
+
+/**
+ * Checks whether a movement represents a cancellation or reversal entry.
+ *
+ * @param {Object} m - Movement record
+ * @returns {boolean}
+ */
+export function isReversalMovement(m) {
+  if (!m) return false;
+  const type = String(m.movementType || m.type || '').toUpperCase();
+  if (type === 'MOVEMENT_REVERSAL') return true;
+  if (String(m.reference || '').startsWith('REV-MOV-')) return true;
+  return false;
+}
+
 /**
  * @file vanStockData.js
  * @description Isolated mock catalog, Sri Lankan hardware inventory seed data,

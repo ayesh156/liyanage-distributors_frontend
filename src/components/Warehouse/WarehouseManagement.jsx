@@ -32,9 +32,6 @@ import {
   CornerDownLeft,
   Printer,
   Tags,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import VanStockLayout from '../VanStock/VanStockLayout';
@@ -54,6 +51,7 @@ import CategoryManagerModal from './CategoryManagerModal';
 import UpdateStockModal from './UpdateStockModal';
 import OwnerSignatureModal from '../VanStock/OwnerSignatureModal';
 import DeleteConfirmModal from '../ui/DeleteConfirmModal';
+import PrintWarehouseStockReport from './PrintWarehouseStockReport';
 import useVanStockStore from '../../hooks/useVanStockStore';
 import { resolveServerImageUrl } from '../../utils/imageCompression';
 import {
@@ -62,260 +60,6 @@ import {
   formatLKR,
   formatDateYYYYMMDD,
 } from '../../data/vanStockData';
-
-/**
- * Popover Calendar Date Picker supporting single-day and date-range selection
- */
-function AuditCalendarPicker({ startDate, endDate, onSelectRange, onClose }) {
-  const [viewDate, setViewDate] = useState(() => {
-    return startDate ? new Date(startDate) : new Date();
-  });
-  const [rangeStart, setRangeStart] = useState(startDate || '');
-  const [rangeEnd, setRangeEnd] = useState(endDate || '');
-
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const calendarDays = [];
-  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
-  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
-
-  const handlePrevMonth = () => {
-    setViewDate(new Date(year, month - 1, 1));
-  };
-
-  const handleNextMonth = () => {
-    setViewDate(new Date(year, month + 1, 1));
-  };
-
-  const handleDayClick = (day) => {
-    if (!day) return;
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (!rangeStart || (rangeStart && rangeEnd)) {
-      setRangeStart(dateStr);
-      setRangeEnd('');
-    } else {
-      if (dateStr < rangeStart) {
-        setRangeEnd(rangeStart);
-        setRangeStart(dateStr);
-      } else {
-        setRangeEnd(dateStr);
-      }
-    }
-  };
-
-  const handleApply = () => {
-    onSelectRange(rangeStart, rangeEnd || rangeStart);
-    onClose();
-  };
-
-  const handleClear = () => {
-    setRangeStart('');
-    setRangeEnd('');
-    onSelectRange('', '');
-    onClose();
-  };
-
-  return (
-    <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-2xl w-72 text-xs space-y-2.5 z-50">
-      <div className="flex items-center justify-between">
-        <span className="font-bold text-slate-800 dark:text-slate-100">
-          {monthNames[month]} {year}
-        </span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={handlePrevMonth}
-            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={handleNextMonth}
-            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 text-center font-bold text-[10px] text-slate-400">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <div key={d}>{d}</div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {calendarDays.map((d, idx) => {
-          if (!d) return <div key={idx} />;
-          const curStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          const isStart = rangeStart === curStr;
-          const isEnd = rangeEnd === curStr;
-          const inRange = rangeStart && rangeEnd && curStr >= rangeStart && curStr <= rangeEnd;
-          const isToday = curStr === new Date().toISOString().slice(0, 10);
-
-          let cls = 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200';
-          if (isStart || isEnd) {
-            cls = 'bg-accent-600 text-white font-bold rounded-lg';
-          } else if (inRange) {
-            cls = 'bg-accent-100 dark:bg-accent-950/60 text-accent-800 dark:text-accent-200 rounded-md';
-          }
-
-          return (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleDayClick(d)}
-              className={`h-7 w-full flex items-center justify-center text-xs transition-colors cursor-pointer relative ${cls} ${isToday && !inRange && !isStart ? 'border border-accent-400 font-bold' : ''}`}
-            >
-              {d}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-        <button
-          type="button"
-          onClick={handleClear}
-          className="text-slate-500 hover:text-rose-500 cursor-pointer"
-        >
-          Clear
-        </button>
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={!rangeStart}
-          className="px-3 py-1 rounded-lg bg-accent-600 hover:bg-accent-700 text-white font-semibold disabled:opacity-40 cursor-pointer"
-        >
-          Apply
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Unified Modern Day of Week Pills & Shadcn Popover Calendar Filter
- */
-function UnifiedDayPillsCalendarFilter({
-  selectedDayOfWeek,
-  onSelectDayOfWeek,
-  calendarDateRange,
-  onSelectDateRange,
-  onReset,
-  label = 'Date Filter',
-  resultCount,
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const isTodaySelected = calendarDateRange.start === todayStr && calendarDateRange.end === todayStr;
-
-  return (
-    <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
-      {/* Day of Week Pills (Today, ALL, Mon - Sun) */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
-          <Calendar size={13} className="text-accent-500" />
-          <span>{label}:</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            onSelectDateRange({ start: todayStr, end: todayStr });
-            onSelectDayOfWeek('ALL');
-          }}
-          className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-            isTodaySelected
-              ? 'bg-accent-600 text-white shadow-xs'
-              : 'bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 hover:bg-accent-100'
-          }`}
-        >
-          Today
-        </button>
-        {['ALL', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-          const isSelected = selectedDayOfWeek === day;
-          return (
-            <button
-              key={day}
-              type="button"
-              onClick={() => onSelectDayOfWeek(day)}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                isSelected
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs font-bold'
-                  : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {day}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Calendar Date Range Picker Popover Trigger + Result count + Reset */}
-      <div className="flex items-center gap-2 relative">
-        {resultCount !== undefined && (
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline mr-1">
-            {resultCount} item{resultCount === 1 ? '' : 's'}
-          </span>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-            calendarDateRange.start
-              ? 'border-accent-500 bg-accent-50/50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 font-bold'
-              : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Calendar size={14} />
-          <span>
-            {calendarDateRange.start
-              ? `${calendarDateRange.start}${calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start ? ` to ${calendarDateRange.end}` : ''}`
-              : 'Pick Date Range'}
-          </span>
-        </button>
-
-        {(selectedDayOfWeek !== 'ALL' || calendarDateRange.start) && (
-          <button
-            type="button"
-            onClick={onReset}
-            className="px-2 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
-          >
-            Reset
-          </button>
-        )}
-
-        {/* Popover Calendar Picker */}
-        {isOpen && (
-          <div className="absolute right-0 top-full mt-2 z-50">
-            <AuditCalendarPicker
-              startDate={calendarDateRange.start}
-              endDate={calendarDateRange.end}
-              isOpen={isOpen}
-              onClose={() => setIsOpen(false)}
-              onSelectRange={(start, end) => {
-                onSelectDateRange({ start, end });
-                onSelectDayOfWeek('ALL');
-                setIsOpen(false);
-              }}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function WarehouseManagement() {
   const navigate = useNavigate();
@@ -354,6 +98,7 @@ export default function WarehouseManagement() {
   const [modalReturnVanOpen, setModalReturnVanOpen] = useState(false);
   const [modalCategoryManagerOpen, setModalCategoryManagerOpen] = useState(false);
   const [modalOwnerSignOpen, setModalOwnerSignOpen] = useState(false);
+  const [modalPrintOpen, setModalPrintOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState(null);
   const [targetProductId, setTargetProductId] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -363,15 +108,8 @@ export default function WarehouseManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [stockAvailabilityFilter, setStockAvailabilityFilter] = useState('ALL');
-  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState('ALL');
-  const [calendarDateRange, setCalendarDateRange] = useState({ start: '', end: '' });
 
   const setModalLoadOpen = setModalLoadVanOpen;
-
-  const handleResetDateFilters = () => {
-    setSelectedDayOfWeek('ALL');
-    setCalendarDateRange({ start: '', end: '' });
-  };
 
   // Master Categories list for SearchableSelect strictly from live DB
   const categoryOptions = useMemo(() => {
@@ -418,25 +156,9 @@ export default function WarehouseManagement() {
       else if (stockAvailabilityFilter === 'LOW_STOCK') matchStock = item.quantity > 0 && item.quantity <= 20;
       else if (stockAvailabilityFilter === 'OUT_OF_STOCK') matchStock = item.quantity === 0;
 
-      // Date preset / Shadcn Day-Pill & Range check (matching item update or product creation timestamp)
-      const dateToCheck = item.updatedAt || item.createdAt || new Date().toISOString();
-      let matchDate = true;
-      if (calendarDateRange.start) {
-        const dtStr = formatDateYYYYMMDD(dateToCheck);
-        if (calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start) {
-          matchDate = dtStr >= calendarDateRange.start && dtStr <= calendarDateRange.end;
-        } else {
-          matchDate = dtStr === calendarDateRange.start;
-        }
-      } else if (selectedDayOfWeek !== 'ALL') {
-        const dt = new Date(dateToCheck);
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        matchDate = dayNames[dt.getDay()] === selectedDayOfWeek;
-      }
-
-      return matchSearch && matchCategory && matchStock && matchDate;
+      return matchSearch && matchCategory && matchStock;
     });
-  }, [mainStoreStock, products, searchQuery, categoryFilter, stockAvailabilityFilter, selectedDayOfWeek, calendarDateRange]);
+  }, [mainStoreStock, products, searchQuery, categoryFilter, stockAvailabilityFilter]);
 
   // Dynamic Warehouse KPIs (reacts directly to active filters and filtered items)
   const dynamicKpis = useMemo(() => {
@@ -580,7 +302,7 @@ export default function WarehouseManagement() {
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => setModalPrintOpen(true)}
             className="flex-shrink-0 snap-start flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
             title="Print Warehouse Inventory"
           >
@@ -673,7 +395,7 @@ export default function WarehouseManagement() {
           <div className="w-48 sm:w-56">
             <SearchableSelect
               value={categoryFilter}
-              onChange={setCategoryFilter}
+              onChange={(val) => setCategoryFilter(val || 'ALL')}
               options={categoryOptions}
               placeholder={categoryOptions.length <= 1 ? "No categories available" : "Filter Category"}
               emptyMessage="No categories available"
@@ -687,29 +409,13 @@ export default function WarehouseManagement() {
           <div className="w-48 sm:w-52">
             <SearchableSelect
               value={stockAvailabilityFilter}
-              onChange={setStockAvailabilityFilter}
+              onChange={(val) => setStockAvailabilityFilter(val || 'ALL')}
               options={stockAvailabilityOptions}
               placeholder="Stock Level"
               size="sm"
               portal
             />
           </div>
-        </div>
-
-        {/* Row 2: Day pills + Date picker */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <UnifiedDayPillsCalendarFilter
-            selectedDayOfWeek={selectedDayOfWeek}
-            onSelectDayOfWeek={setSelectedDayOfWeek}
-            calendarDateRange={calendarDateRange}
-            onSelectDateRange={(range) => {
-              setCalendarDateRange(range);
-              setSelectedDayOfWeek('ALL');
-            }}
-            onReset={handleResetDateFilters}
-            label="Warehouse Audit Scope"
-            resultCount={filteredCatalog.length}
-          />
         </div>
       </div>
 
@@ -1077,6 +783,30 @@ export default function WarehouseManagement() {
     ) : null
   }
 />
+
+      {/* Corporate A4 Printable Warehouse Stock Report */}
+      <PrintWarehouseStockReport
+        isOpen={modalPrintOpen}
+        onClose={() => setModalPrintOpen(false)}
+        items={filteredCatalog}
+        categoryFilterLabel={
+          categoryFilter === 'ALL'
+            ? 'All Categories'
+            : categories.find((c) => String(c.id) === String(categoryFilter))?.name || categoryFilter
+        }
+        stockFilterLabel={
+          stockAvailabilityFilter === 'ALL'
+            ? 'All Stock Levels'
+            : stockAvailabilityFilter === 'IN_STOCK'
+            ? 'In Stock (> 0)'
+            : stockAvailabilityFilter === 'LOW_STOCK'
+            ? 'Low Stock (<= 20)'
+            : stockAvailabilityFilter === 'OUT_OF_STOCK'
+            ? 'Out of Stock (0)'
+            : stockAvailabilityFilter
+        }
+        searchQuery={searchQuery}
+      />
     </VanStockLayout>
   );
 }

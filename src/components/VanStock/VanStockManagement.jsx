@@ -65,6 +65,7 @@ import OwnerSignatureModal from './OwnerSignatureModal';
 import SignaturePadModal from './SignaturePadModal';
 import SearchableSelect from '../ui/SearchableSelect';
 import ConfirmActionModal from '../ui/ConfirmActionModal';
+import { settingsApi } from '../../services/api';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -82,6 +83,10 @@ import {
   formatLKR,
   isDateInPreset,
   formatDateYYYYMMDD,
+  getColomboDateStr,
+  isRoadSaleMovement,
+  isLoadMovement,
+  isReversalMovement,
 } from '../../data/vanStockData';
 import { DEFAULT_OWNER_SIGNATURE } from '../../data/defaultOwnerSignature';
 
@@ -393,8 +398,9 @@ function UnifiedDayPillsCalendarFilter({
   extraRight,
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const isTodaySelected = calendarDateRange.start === todayStr && calendarDateRange.end === todayStr;
+  const todayStr = useMemo(() => getColomboDateStr(new Date()), []);
+  const isCustomRangeActive = Boolean(calendarDateRange?.start);
+  const isTodaySelected = isCustomRangeActive && calendarDateRange.start === todayStr && calendarDateRange.end === todayStr;
 
   return (
     <div className="p-3 sm:px-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
@@ -408,7 +414,7 @@ function UnifiedDayPillsCalendarFilter({
           type="button"
           onClick={() => {
             onSelectDateRange({ start: todayStr, end: todayStr });
-            onSelectDayOfWeek('ALL');
+            onSelectDayOfWeek('');
           }}
           className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             isTodaySelected
@@ -419,12 +425,15 @@ function UnifiedDayPillsCalendarFilter({
           Today
         </button>
         {['ALL', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-          const isSelected = selectedDayOfWeek === day;
+          const isSelected = !isCustomRangeActive && selectedDayOfWeek === day;
           return (
             <button
               key={day}
               type="button"
-              onClick={() => onSelectDayOfWeek(day)}
+              onClick={() => {
+                onSelectDayOfWeek(day);
+                onSelectDateRange({ start: '', end: '' });
+              }}
               className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 isSelected
                   ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs font-bold'
@@ -484,7 +493,7 @@ function UnifiedDayPillsCalendarFilter({
                 onClose={() => setIsOpen(false)}
                 onSelectRange={(start, end) => {
                   onSelectDateRange({ start, end });
-                  onSelectDayOfWeek('ALL');
+                  onSelectDayOfWeek('');
                   setIsOpen(false);
                 }}
               />
@@ -545,6 +554,8 @@ export default function VanStockManagement() {
   const fetchInitialData = useVanStockStore((s) => s.fetchInitialData);
   const toggleRepItemChecked = useVanStockStore((s) => s.toggleRepItemChecked);
   const toggleEveningItemChecked = useVanStockStore((s) => s.toggleEveningItemChecked);
+  const toggleWeeklyVerified = useVanStockStore((s) => s.toggleWeeklyVerified);
+  const resetWeeklyVerification = useVanStockStore((s) => s.resetWeeklyVerification);
   const toggleAllRepItemsChecked = useVanStockStore((s) => s.toggleAllRepItemsChecked);
   const toggleAllEveningItemsChecked = useVanStockStore((s) => s.toggleAllEveningItemsChecked);
   const getManifestForDate = useVanStockStore((s) => s.getManifestForDate);
@@ -557,6 +568,30 @@ export default function VanStockManagement() {
   const savedRepSignature = useVanStockStore((s) => s.savedRepSignature);
   const saveEveningReconciliation = useVanStockStore((s) => s.saveEveningReconciliation);
 
+  const [companySettings, setCompanySettings] = useState({
+    reportSignatureRole: 'Driver',
+    reportSignatureName: '',
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSettings() {
+      try {
+        const res = await settingsApi.getCompanySettings();
+        if (isMounted && res?.data) {
+          setCompanySettings({
+            reportSignatureRole: res.data.reportSignatureRole || 'Driver',
+            reportSignatureName: res.data.reportSignatureName || '',
+          });
+        }
+      } catch (_e) {}
+    }
+    loadSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
@@ -568,6 +603,8 @@ export default function VanStockManagement() {
   const [modalSalesOpen, setModalSalesOpen] = useState(false);
   const [modalReturnOpen, setModalReturnOpen] = useState(false);
   const [modalPrintOpen, setModalPrintOpen] = useState(false);
+  const [modalSaleReportOpen, setModalSaleReportOpen] = useState(false);
+  const [modalWeeklyReportOpen, setModalWeeklyReportOpen] = useState(false);
   const [modalDamageReportOpen, setModalDamageReportOpen] = useState(false);
   const [modalOwnerSignOpen, setModalOwnerSignOpen] = useState(false);
   const [modalEditQtyOpen, setModalEditQtyOpen] = useState(false);
@@ -940,12 +977,12 @@ export default function VanStockManagement() {
         defectStatusFilter === 'ALL' || item.status === defectStatusFilter;
 
       // The date filter for this tab must ONLY filter by the date the damage was logged (createdAt)
-      const targetDate = item.createdAt;
+      const targetDate = item.createdAt || item.date;
 
-      // Date matching against calendar date range and day of week
+      // Date matching against calendar date range and day of week in Asia/Colombo (+05:30) time
       let matchDate = true;
+      const dtStr = getColomboDateStr(targetDate);
       if (calendarDateRange.start) {
-        const dtStr = formatDateYYYYMMDD(targetDate);
         if (calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start) {
           matchDate = dtStr >= calendarDateRange.start && dtStr <= calendarDateRange.end;
         } else {
@@ -953,23 +990,24 @@ export default function VanStockManagement() {
         }
       } else if (selectedDayOfWeek !== 'ALL') {
         const dt = new Date(targetDate);
+        const colomboDt = new Date(dt.getTime() + (330 + dt.getTimezoneOffset()) * 60000);
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        matchDate = dayNames[dt.getDay()] === selectedDayOfWeek;
+        matchDate = dayNames[colomboDt.getDay()] === selectedDayOfWeek;
       }
 
       return matchSearch && matchStatus && matchDate;
     });
   }, [showResolvedHistory, activeDamagedGoodsList, resolvedDamagedGoodsList, searchQuery, defectStatusFilter, damageDateFilterMode, calendarDateRange, selectedDayOfWeek]);
 
-  // Grouped Stock Movements: consolidate VEHICLE_SALES_OUTBOUND by Date (YYYY-MM-DD) and SKU
+  // Grouped Stock Movements: consolidate Road Sales by Colombo Date (YYYY-MM-DD) and SKU
   const groupedMovements = useMemo(() => {
     const roadSalesMap = new Map();
     const otherMovements = [];
 
     stockMovements.forEach((m) => {
-      if (m.movementType === 'VEHICLE_SALES_OUTBOUND') {
-        const rawTime = m.timestamp || m.createdAt || new Date().toISOString();
-        const dateKey = new Date(rawTime).toISOString().slice(0, 10);
+      if (isRoadSaleMovement(m)) {
+        const rawTime = m.timestamp || m.createdAt || m.date || new Date().toISOString();
+        const dateKey = getColomboDateStr(rawTime);
         const skuKey = m.sku || String(m.productId);
         const groupKey = `${dateKey}_${skuKey}`;
 
@@ -996,13 +1034,13 @@ export default function VanStockManagement() {
 
     const consolidated = [...Array.from(roadSalesMap.values()), ...otherMovements];
     return consolidated.sort((a, b) => {
-      const timeA = new Date(a.timestamp || a.createdAt).getTime();
-      const timeB = new Date(b.timestamp || b.createdAt).getTime();
+      const timeA = new Date(a.timestamp || a.createdAt || a.date).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt || b.date).getTime();
       return timeB - timeA;
     });
   }, [stockMovements]);
 
-  // Filtered Stock Movements (incorporates Day of Week and Calendar Picker)
+  // Filtered Stock Movements (incorporates Day of Week and Calendar Picker in Colombo time)
   const filteredMovements = useMemo(() => {
     return groupedMovements.filter((m) => {
       const q = searchQuery.toLowerCase().trim();
@@ -1012,34 +1050,30 @@ export default function VanStockManagement() {
         (m.sku && m.sku.toLowerCase().includes(q));
 
       const matchType =
-        movementTypeFilter === 'ALL' || m.movementType === movementTypeFilter;
+        !movementTypeFilter || movementTypeFilter === 'ALL' || m.movementType === movementTypeFilter;
 
-      // Safely support either timestamp or createdAt fields from backend or local movements
-      const rawTime = m.timestamp || m.createdAt;
-      const matchDate = isDateInPreset(rawTime, datePreset, customStart, customEnd);
-
-      // Day of Week filter (Mon - Sun)
-      let matchDay = true;
-      if (selectedDayOfWeek !== 'ALL') {
-        const dt = new Date(rawTime);
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        matchDay = dayNames[dt.getDay()] === selectedDayOfWeek;
-      }
+      // Safely support either timestamp, createdAt, date, or groupedDate fields in Colombo time
+      const rawTime = m.timestamp || m.createdAt || m.date || m.groupedDate;
+      const movDateStr = getColomboDateStr(rawTime);
 
       // Calendar Date Range filter
       let matchCalendar = true;
       if (calendarDateRange.start) {
-        const dtStr = new Date(rawTime).toISOString().slice(0, 10);
-        if (calendarDateRange.end) {
-          matchCalendar = dtStr >= calendarDateRange.start && dtStr <= calendarDateRange.end;
+        if (calendarDateRange.end && calendarDateRange.end !== calendarDateRange.start) {
+          matchCalendar = movDateStr >= calendarDateRange.start && movDateStr <= calendarDateRange.end;
         } else {
-          matchCalendar = dtStr === calendarDateRange.start;
+          matchCalendar = movDateStr === calendarDateRange.start;
         }
+      } else if (selectedDayOfWeek !== 'ALL') {
+        const dt = new Date(rawTime);
+        const colomboDt = new Date(dt.getTime() + (330 + dt.getTimezoneOffset()) * 60000);
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        matchCalendar = dayNames[colomboDt.getDay()] === selectedDayOfWeek;
       }
 
-      return matchSearch && matchType && matchDate && matchDay && matchCalendar;
+      return matchSearch && matchType && matchCalendar;
     });
-  }, [groupedMovements, searchQuery, movementTypeFilter, datePreset, customStart, customEnd, selectedDayOfWeek, calendarDateRange]);
+  }, [groupedMovements, searchQuery, movementTypeFilter, selectedDayOfWeek, calendarDateRange]);
 
   // Item-Wise Total Summary calculation for Audit History
   const movementItemTotals = useMemo(() => {
@@ -1325,8 +1359,38 @@ export default function VanStockManagement() {
     () => filteredVanStock.filter((i) => isItemCheckedEvening(i)).length,
     [filteredVanStock, isItemCheckedEvening]
   );
+  const weeklyVerifiedCount = useMemo(
+    () => filteredVanStock.filter((i) => Boolean(i.weeklyVerified)).length,
+    [filteredVanStock]
+  );
   const allMorningVerified = filteredVanStock.length > 0 && morningVerifiedCount === filteredVanStock.length;
   const allEveningReconciled = filteredVanStock.length > 0 && eveningReconciledCount === filteredVanStock.length;
+
+  const handleToggleWeeklyCheck = async (item) => {
+    try {
+      await toggleWeeklyVerified(item);
+    } catch (_err) {
+      toast.error('Failed to update weekly physical verification audit');
+    }
+  };
+
+  const handleResetWeeklyTicks = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset Weekly Stock Verification Ticks',
+      message: `Are you sure you want to reset all weekly physical verification audit ticks for ${vehicle?.id || 'VAN-01'}? All items will be unverified for the new audit period.`,
+      confirmLabel: 'Yes, Reset Weekly Ticks',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await resetWeeklyVerification(vehicle?.id || 'VAN-01');
+          toast.success('Weekly verification ticks reset successfully.');
+        } catch (err) {
+          toast.error(err.message || 'Failed to reset weekly ticks');
+        }
+      },
+    });
+  };
 
   const handleToggleAllMorning = () => {
     const nextVal = !allMorningVerified;
@@ -1487,15 +1551,49 @@ export default function VanStockManagement() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={activeTab === 'damaged' ? () => setModalDamageReportOpen(true) : () => setModalPrintOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
-            title={activeTab === 'damaged' ? 'Print Damaged Goods Audit Report (A4)' : 'Print Daily Load Manifest (A4)'}
-          >
-            <Printer size={15} />
-            <span>{activeTab === 'damaged' ? 'Print Damage Report' : 'Print Stock Sheet'}</span>
-          </button>
+          {activeTab === 'damaged' ? (
+            <button
+              type="button"
+              onClick={() => setModalDamageReportOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+              title="Print Damaged Goods Audit Report (A4)"
+            >
+              <Printer size={15} />
+              <span>Print Damage Report</span>
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setModalPrintOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                title="Print Daily Load Manifest (A4)"
+              >
+                <Printer size={15} />
+                <span>Print Stock Sheet</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalSaleReportOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                title="Print Road Sale Report (A4)"
+              >
+                <Printer size={15} />
+                <span>Print Sale Report</span>
+              </button>
+              {weeklyVerifiedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setModalWeeklyReportOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                  title="Print Weekly Stock Verification Audit Report (A4)"
+                >
+                  <Printer size={15} />
+                  <span>Weekly Report</span>
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -1681,7 +1779,7 @@ export default function VanStockManagement() {
             <div className="w-48 sm:w-56">
               <SearchableSelect
                 value={categoryFilter}
-                onChange={setCategoryFilter}
+                onChange={(val) => setCategoryFilter(val || 'ALL')}
                 options={categoryOptions}
                 placeholder={categoryOptions.length <= 1 ? "No categories available" : "Category"}
                 emptyMessage="No categories available"
@@ -1695,7 +1793,7 @@ export default function VanStockManagement() {
             <div className="w-48 sm:w-52">
               <SearchableSelect
                 value={vanApprovalFilter}
-                onChange={setVanApprovalFilter}
+                onChange={(val) => setVanApprovalFilter(val || 'ALL')}
                 options={vanApprovalOptions}
                 placeholder="Verification Status"
                 size="sm"
@@ -1707,7 +1805,7 @@ export default function VanStockManagement() {
             <div className="w-48 sm:w-52">
               <SearchableSelect
                 value={defectStatusFilter}
-                onChange={setDefectStatusFilter}
+                onChange={(val) => setDefectStatusFilter(val || 'ALL')}
                 options={defectStatusOptions}
                 placeholder="Defect Status"
                 size="sm"
@@ -1719,7 +1817,7 @@ export default function VanStockManagement() {
             <div className="w-48 sm:w-56">
               <SearchableSelect
                 value={movementTypeFilter}
-                onChange={setMovementTypeFilter}
+                onChange={(val) => setMovementTypeFilter(val || 'ALL')}
                 options={movementTypeOptions}
                 placeholder="Movement Type"
                 size="sm"
@@ -1737,7 +1835,7 @@ export default function VanStockManagement() {
             calendarDateRange={calendarDateRange}
             onSelectDateRange={(range) => {
               setCalendarDateRange(range);
-              setSelectedDayOfWeek('ALL');
+              setSelectedDayOfWeek('');
             }}
             onReset={handleResetAuditDateFilters}
             label={
@@ -1809,8 +1907,8 @@ export default function VanStockManagement() {
                 <span>Morning: {morningVerifiedCount}/{filteredVanStock.length}</span>
               </span>
               <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1">
-                <Moon size={12} className="text-blue-600" />
-                <span>Evening: {eveningReconciledCount}/{filteredVanStock.length}</span>
+                <CheckSquare size={12} className="text-blue-600" />
+                <span>Weekly Audit: {weeklyVerifiedCount}/{filteredVanStock.length}</span>
               </span>
             </div>
 
@@ -1825,21 +1923,12 @@ export default function VanStockManagement() {
               </button>
               <button
                 type="button"
-                onClick={handleToggleAllEvening}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100/60 transition-all cursor-pointer"
+                onClick={handleResetWeeklyTicks}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100/60 transition-all cursor-pointer"
+                title="Reset all weekly verification audit ticks for this vehicle"
               >
-                <CheckSquare size={13} className={allEveningReconciled ? 'text-blue-600' : 'text-slate-400'} />
-                <span>{allEveningReconciled ? 'Uncheck Evening' : 'Evening: Reconcile All'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmEveningReconciliation}
-                disabled={isSavingEvening}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
-                title="Persist Evening Checklist to Database for active date"
-              >
-                <ShieldCheck size={13} className="text-indigo-600 dark:text-indigo-400" />
-                <span>{isSavingEvening ? 'Saving...' : 'Confirm'}</span>
+                <RotateCcw size={13} className="text-rose-600" />
+                <span>Reset Weekly Ticks</span>
               </button>
             </div>
           </div>
@@ -1997,9 +2086,9 @@ export default function VanStockManagement() {
                         <Sun size={12} className="inline text-emerald-600 mr-0.5" />
                         <span>Morning</span>
                       </th>
-                      <th className="py-3 px-3 text-center w-16" title="Evening Return & Sales Reconciliation Check">
-                        <Moon size={12} className="inline text-blue-600 mr-0.5" />
-                        <span>Evening</span>
+                      <th className="py-3 px-3 text-center w-20" title="Weekly Physical Stock Audit Verification">
+                        <CheckSquare size={12} className="inline text-blue-600 mr-0.5" />
+                        <span>Weekly</span>
                       </th>
                       <th className="py-3 px-4">SKU / Item</th>
                       <th className="py-3 px-4">Category</th>
@@ -2018,17 +2107,17 @@ export default function VanStockManagement() {
                       const netPrice = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
                       const totalVal = calcTotalRealValue(netPrice, item.quantity);
                       const isMorningChecked = isItemCheckedMorning(item);
-                      const isEveningChecked = isItemCheckedEvening(item);
+                      const isWeeklyChecked = Boolean(item.weeklyVerified);
                       const isDiscrepancy = item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !isMorningChecked);
 
                       // Distinct row background highlights:
                       // Morning check: bg-emerald-500/15 border-emerald-500/40 text-emerald-950 dark:text-emerald-100 font-medium
-                      // Evening reconciliation: bg-blue-500/15 border-blue-500/40 text-blue-950 dark:text-blue-100 font-medium
+                      // Weekly audit check: bg-blue-500/15 border-blue-500/40 text-blue-950 dark:text-blue-100 font-medium
                       // Both checked: dual gradient
                       let rowStyle = 'hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors';
-                      if (isEveningChecked && isMorningChecked) {
+                      if (isWeeklyChecked && isMorningChecked) {
                         rowStyle = 'bg-gradient-to-r from-emerald-500/15 via-blue-500/15 to-emerald-500/10 border-blue-500/40 text-slate-900 dark:text-white font-medium';
-                      } else if (isEveningChecked) {
+                      } else if (isWeeklyChecked) {
                         rowStyle = 'bg-blue-500/15 border-blue-500/40 text-blue-950 dark:text-blue-100 font-medium';
                       } else if (isMorningChecked) {
                         rowStyle = 'bg-emerald-500/15 border-emerald-500/40 text-emerald-950 dark:text-emerald-100 font-medium';
@@ -2050,15 +2139,15 @@ export default function VanStockManagement() {
                             />
                           </td>
 
-                          {/* Evening Reconciliation Checkbox */}
+                          {/* Weekly Physical Stock Verification Checkbox */}
                           <td className="py-3 px-3 text-center">
                             <input
-                              id={`evening-check-${item.id}`}
+                              id={`weekly-check-${item.id}`}
                               type="checkbox"
-                              checked={isEveningChecked}
-                              onChange={() => handleToggleEveningReconciled(item)}
+                              checked={isWeeklyChecked}
+                              onChange={() => handleToggleWeeklyCheck(item)}
                               className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                              title="Evening Return / Sales Reconciled Check"
+                              title="Weekly Physical Stock Verification Check"
                             />
                           </td>
 
@@ -2092,10 +2181,10 @@ export default function VanStockManagement() {
                           </td>
 
                           <td className="py-3 px-3 text-center">
-                            {isEveningChecked && isMorningChecked ? (
+                            {isWeeklyChecked && isMorningChecked ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/50 dark:text-blue-300">
                                 <CheckCircle2 size={10} />
-                                <span>Reconciled</span>
+                                <span>Weekly Verified</span>
                               </span>
                             ) : item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !isMorningChecked) ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800">
@@ -2183,13 +2272,13 @@ export default function VanStockManagement() {
                   const netPrice = calcNetUnitPrice(item.basePrice, item.companyDiscountPercent);
                   const totalVal = calcTotalRealValue(netPrice, item.quantity);
                   const isMorningChecked = isItemCheckedMorning(item);
-                  const isEveningChecked = isItemCheckedEvening(item);
+                  const isWeeklyChecked = Boolean(item.weeklyVerified);
                   const isDiscrepancy = item.status === 'UNVERIFIED_BY_REP' || (item.discrepancyFlag && !isMorningChecked);
 
                   let rowStyle = 'p-4 space-y-2.5 transition-colors';
-                  if (isEveningChecked && isMorningChecked) {
+                  if (isWeeklyChecked && isMorningChecked) {
                     rowStyle = 'p-4 space-y-2.5 bg-gradient-to-r from-emerald-500/15 to-blue-500/15 border-l-4 border-l-blue-500';
-                  } else if (isEveningChecked) {
+                  } else if (isWeeklyChecked) {
                     rowStyle = 'p-4 space-y-2.5 bg-blue-500/15 border-l-4 border-l-blue-500';
                   } else if (isMorningChecked) {
                     rowStyle = 'p-4 space-y-2.5 bg-emerald-500/15 border-l-4 border-l-emerald-500';
@@ -2222,15 +2311,15 @@ export default function VanStockManagement() {
                             <Sun size={11} className="text-emerald-600" />
                           </label>
 
-                          <label htmlFor={`mobile-evening-check-${item.id}`} className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                          <label htmlFor={`mobile-weekly-check-${item.id}`} className="flex items-center gap-1 cursor-pointer select-none text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                             <input
-                              id={`mobile-evening-check-${item.id}`}
+                              id={`mobile-weekly-check-${item.id}`}
                               type="checkbox"
-                              checked={isEveningChecked}
-                              onChange={() => handleToggleEveningReconciled(item)}
+                              checked={isWeeklyChecked}
+                              onChange={() => handleToggleWeeklyCheck(item)}
                               className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
                             />
-                            <Moon size={11} className="text-blue-600" />
+                            <CheckSquare size={11} className="text-blue-600" />
                           </label>
                         </div>
                       </div>
@@ -2542,7 +2631,7 @@ export default function VanStockManagement() {
                             </td>
                             <td className="py-3 px-3 whitespace-nowrap">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${badge}`}>
-                                {m.isGrouped ? 'Consolidated Road Sale' : label}
+                                {m.isGrouped ? 'Road Sale' : label}
                               </span>
                             </td>
                             <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
@@ -2601,7 +2690,7 @@ export default function VanStockManagement() {
                       <div key={m.id} className="p-3.5 space-y-2 text-xs">
                         <div className="flex items-start justify-between gap-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${badge}`}>
-                            {m.isGrouped ? 'Consolidated Road Sale' : label}
+                            {m.isGrouped ? 'Road Sale' : label}
                           </span>
                           <span className="font-mono text-[10px] text-slate-400">
                             {dateStr}
@@ -2706,13 +2795,44 @@ export default function VanStockManagement() {
       <PrintVanStockSheet
         isOpen={modalPrintOpen}
         onClose={() => setModalPrintOpen(false)}
+        reportType="stock"
+        filterDate={activeOperatingDate}
+        dateRange={calendarDateRange}
+        dateLabel={datePreset}
+        selectedDayOfWeek={selectedDayOfWeek}
+        isAllDates={selectedDayOfWeek === 'ALL' && !calendarDateRange.start && !customStart}
+      />
+
+      <PrintVanStockSheet
+        isOpen={modalSaleReportOpen}
+        onClose={() => setModalSaleReportOpen(false)}
+        reportType="sales"
+        filterDate={activeOperatingDate}
+        dateRange={calendarDateRange}
+        dateLabel={datePreset}
+        selectedDayOfWeek={selectedDayOfWeek}
+        isAllDates={selectedDayOfWeek === 'ALL' && !calendarDateRange.start && !customStart}
+      />
+
+      <PrintVanStockSheet
+        isOpen={modalWeeklyReportOpen}
+        onClose={() => setModalWeeklyReportOpen(false)}
+        reportType="weekly"
+        filterDate={activeOperatingDate}
+        dateRange={calendarDateRange}
+        dateLabel={datePreset}
+        selectedDayOfWeek={selectedDayOfWeek}
+        isAllDates={selectedDayOfWeek === 'ALL' && !calendarDateRange.start && !customStart}
       />
 
       <PrintDamagedGoodsReport
         isOpen={modalDamageReportOpen}
         onClose={() => setModalDamageReportOpen(false)}
         items={filteredDamagedGoods}
-        dateRangeLabel={datePreset}
+        filterDate={activeOperatingDate}
+        dateRange={calendarDateRange}
+        selectedDayOfWeek={selectedDayOfWeek}
+        isAllDates={selectedDayOfWeek === 'ALL' && !calendarDateRange.start && !customStart}
         statusLabel={defectStatusFilter}
       />
 
@@ -2728,12 +2848,17 @@ export default function VanStockManagement() {
         defaultSignerName={
           signingModalRole === 'owner'
             ? activeManifest?.ownerSignedBy || dailyManifest?.ownerSignedBy || 'W. Liyanage (Managing Director / Owner)'
-            : activeManifest?.repSignedBy || dynamicRepName || vehicle?.repName || 'Kamal Perera'
+            : companySettings.reportSignatureName || activeManifest?.repSignedBy || dynamicRepName || vehicle?.repName || 'Driver'
+        }
+        signatoryRole={
+          signingModalRole === 'owner'
+            ? 'Dispatcher / Owner'
+            : companySettings.reportSignatureRole || 'Driver'
         }
         title={
           signingModalRole === 'owner'
             ? 'Warehouse Keeper / Owner Digital Signature'
-            : 'Sales Representative Digital Acceptance Signature'
+            : `${companySettings.reportSignatureRole || 'Driver'} Digital Acceptance Signature`
         }
         vehicleId={vehicle?.id || 'VAN-01'}
         manifestNo={activeManifest?.manifestNo || dailyManifest?.manifestNo || `MAN-${activeOperatingDate.replace(/-/g, '')}-01`}

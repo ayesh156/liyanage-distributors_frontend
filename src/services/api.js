@@ -429,3 +429,12 @@ export const categoriesApi = {
   update: (id, data) => api.put(`/categories/${id}`, data),
   delete: (id) => api.delete(`/categories/${id}`),
 };
+
+/**
+ * SYSTEM & COMPANY SETTINGS
+ * Configurable report signatures & corporate defaults
+ */
+export const settingsApi = {
+  getCompanySettings: () => api.get('/settings'),
+  updateCompanySettings: (payload) => api.put('/settings', payload),
+};

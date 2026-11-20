@@ -2342,6 +2342,66 @@ export const useVanStockStore = create((set, get) => ({
   },
 
   /**
+   * Weekly Stock Verification Audit helpers & actions
+   */
+  isItemWeeklyVerified: (itemOrId) => {
+    const item = typeof itemOrId === 'object' && itemOrId !== null
+      ? itemOrId
+      : get().vanStock.find((v) => v.id === Number(itemOrId));
+    return Boolean(item?.weeklyVerified);
+  },
+
+  toggleWeeklyVerified: async (itemOrId, forceValue) => {
+    const { vanStock, vehicle } = get();
+    const itemId = typeof itemOrId === 'object' && itemOrId !== null ? itemOrId.id : Number(itemOrId);
+    const item = vanStock.find((v) => v.id === itemId);
+    const nextVal = forceValue !== undefined ? Boolean(forceValue) : !Boolean(item?.weeklyVerified);
+    const nowIso = new Date().toISOString();
+
+    const updatedVanStock = vanStock.map((v) => {
+      if (v.id === itemId) {
+        return {
+          ...v,
+          weeklyVerified: nextVal,
+          weeklyVerifiedAt: nextVal ? nowIso : null,
+        };
+      }
+      return v;
+    });
+
+    set({ vanStock: updatedVanStock });
+    persistState(get());
+
+    try {
+      await vanStockApi.toggleWeeklyVerified(itemId, nextVal);
+    } catch (err) {
+      console.warn('Failed to toggle weekly verify on backend:', err);
+    }
+
+    return { success: true, weeklyVerified: nextVal };
+  },
+
+  resetWeeklyVerification: async (vehicleId = 'VAN-01') => {
+    const { vanStock } = get();
+    const updatedVanStock = vanStock.map((v) => ({
+      ...v,
+      weeklyVerified: false,
+      weeklyVerifiedAt: null,
+    }));
+
+    set({ vanStock: updatedVanStock });
+    persistState(get());
+
+    try {
+      await vanStockApi.resetWeeklyVerification(vehicleId);
+    } catch (err) {
+      console.warn('Failed to reset weekly verification on backend:', err);
+    }
+
+    return { success: true };
+  },
+
+  /**
    * Action: Toggle All Rep Loaded Items Checkbox (Morning Check)
    */
   toggleAllRepItemsChecked: (checked = true, dateStr) => {

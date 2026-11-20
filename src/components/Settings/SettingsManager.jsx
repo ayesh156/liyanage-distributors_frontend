@@ -26,10 +26,11 @@ import {
   Sparkles,
   Upload,
   MapPin,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
-import { usersApi } from '../../services/api';
+import { usersApi, settingsApi } from '../../services/api';
 import SearchableSelect from '../ui/SearchableSelect';
 
 /**
@@ -93,6 +94,46 @@ export default function SettingsManager() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // -------------------------------------------------------------
+  // TAB 1: VAN STOCK & ROAD SALE REPORT SIGNATORY CONFIGURATION
+  // -------------------------------------------------------------
+  const [signatureSettings, setSignatureSettings] = useState({
+    reportSignatureRole: 'Driver',
+    reportSignatureName: '',
+  });
+  const [isSavingSignature, setIsSavingSignature] = useState(false);
+
+  // Hydrate signature settings from backend on component mount
+  useEffect(() => {
+    async function loadSignatureSettings() {
+      try {
+        const res = await settingsApi.getCompanySettings();
+        if (res?.data) {
+          setSignatureSettings({
+            reportSignatureRole: res.data.reportSignatureRole || 'Driver',
+            reportSignatureName: res.data.reportSignatureName || '',
+          });
+        }
+      } catch (err) {
+        console.warn('Could not load company settings:', err);
+      }
+    }
+    loadSignatureSettings();
+  }, []);
+
+  const handleSaveSignatureSettings = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setIsSavingSignature(true);
+    try {
+      await settingsApi.updateCompanySettings(signatureSettings);
+      toast.success('Van Stock & Road Sale report signatory settings saved successfully!');
+    } catch (err) {
+      toast.error(err.message || 'Failed to save report signatory settings');
+    } finally {
+      setIsSavingSignature(false);
+    }
+  };
 
   // Sync profile form when auth context user changes
   useEffect(() => {
@@ -629,6 +670,67 @@ export default function SettingsManager() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Section: Van Stock & Road Sale Report Signatory */}
+          <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Van Stock & Road Sale Report Signatory
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Configure the default signatory role and optional name rendered on printable Stock Sheets, Road Sale Reports, and Weekly Reports.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                  Signatory Role (Default: Driver)
+                </label>
+                <input
+                  type="text"
+                  value={signatureSettings.reportSignatureRole}
+                  onChange={(e) =>
+                    setSignatureSettings((prev) => ({ ...prev, reportSignatureRole: e.target.value }))
+                  }
+                  placeholder="Driver"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                  Signatory Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={signatureSettings.reportSignatureName}
+                  onChange={(e) =>
+                    setSignatureSettings((prev) => ({ ...prev, reportSignatureName: e.target.value }))
+                  }
+                  placeholder="e.g. Nimal Perera (Optional)"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/60 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-gray-100 dark:border-slate-700/60 flex justify-end">
+              <button
+                type="button"
+                onClick={handleSaveSignatureSettings}
+                disabled={isSavingSignature}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSavingSignature ? 'Saving...' : 'Save Signatory Settings'}</span>
+              </button>
             </div>
           </div>
         </form>

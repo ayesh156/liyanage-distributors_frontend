@@ -58,6 +58,15 @@ export const vanStockApi = {
     return await api.delete(`/warehouse/categories/${id}`, { suppressToast: true });
   },
 
+  // ── Company Settings & Report Signature APIs ──
+  async getCompanySettings() {
+    return await api.get('/settings');
+  },
+
+  async updateCompanySettings(payload) {
+    return await api.put('/settings', payload);
+  },
+
   // ── Vehicle Profile & Physical Image Storage APIs ──
   async getVehicleProfile(vehicleId = 'VAN-01') {
     return await api.get('/settings/vehicle', { vehicleId });
@@ -90,6 +99,15 @@ export const vanStockApi = {
 
   async deleteVanStockItem(id) {
     return await api.delete(`/van-stock/items/${id}`);
+  },
+
+  // ── Weekly Stock Verification Audit APIs ──
+  async toggleWeeklyVerified(id, value) {
+    return await api.patch(`/van-stock/items/${id}/weekly-verify`, { value });
+  },
+
+  async resetWeeklyVerification(vehicleId = 'VAN-01') {
+    return await api.post('/van-stock/weekly-verify/reset', { vehicleId });
   },
 
   // ── Quarantined Damaged Goods APIs ──

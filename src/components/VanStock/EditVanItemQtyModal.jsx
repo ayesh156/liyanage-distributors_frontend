@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { X, Plus, Minus, ArrowRightLeft, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import useVanStockStore from '../../hooks/useVanStockStore';
+import { handleNumericFocus, normalizeNumericChange, handleNumericBlur } from '../../utils/numberInputUtils';
 import { calcNetUnitPrice, calcTotalRealValue, formatLKR } from '../../data/vanStockData';
 
 export default function EditVanItemQtyModal({ isOpen, onClose, item }) {
@@ -157,8 +158,12 @@ export default function EditVanItemQtyModal({ isOpen, onClose, item }) {
               <input
                 type="number"
                 min="0"
+                step="any"
+                inputMode="decimal"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onFocus={(e) => handleNumericFocus(e, setQuantity)}
+                onChange={(e) => setQuantity(normalizeNumericChange(e.target.value))}
+                onBlur={(e) => handleNumericBlur(e, setQuantity, '0')}
                 className="flex-1 text-center py-2 px-3 text-sm font-bold font-mono rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
               />
 
